@@ -1333,6 +1333,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState('offline')
   const skipNextFirestoreUpdate = useRef(false)
   const firestoreUnsub = useRef(null)
+  const initialCloudLoadDone = useRef(false)
 
   const monthData = getMonthData(data, currentMonth)
 
@@ -1348,12 +1349,12 @@ export default function App() {
   // Firestore real-time listener — attach when signed in
   useEffect(() => {
     if (firestoreUnsub.current) { firestoreUnsub.current(); firestoreUnsub.current = null }
-    if (!user) { setSyncStatus('offline'); return }
+    if (!user) { setSyncStatus('offline'); initialCloudLoadDone.current = false; return }
 
     setSyncStatus('synced')
     const docRef = doc(db, 'users', user.uid)
     firestoreUnsub.current = onSnapshot(docRef, (snap) => {
-      if (skipNextFirestoreUpdate.current) { skipNextFirestoreUpdate.current = false; return }
+      if (skipNextFirestoreUpdate.current) { skipNextFirestoreUpdate.current = false; initialCloudLoadDone.current = true; return }
       if (snap.exists()) {
         const cloudData = snap.data()?.financeData
         if (cloudData && typeof cloudData === 'object') {
@@ -1363,7 +1364,8 @@ export default function App() {
           setSyncStatus('synced')
         }
       }
-    }, () => { setSyncStatus('error') })
+      initialCloudLoadDone.current = true
+    }, () => { setSyncStatus('error'); initialCloudLoadDone.current = true })
 
     return () => { if (firestoreUnsub.current) { firestoreUnsub.current(); firestoreUnsub.current = null } }
   }, [user])
@@ -1372,7 +1374,7 @@ export default function App() {
   useEffect(() => {
     saveData(data)
     setStorageInfo(getStorageUsage())
-    if (user) {
+    if (user && initialCloudLoadDone.current) {
       skipNextFirestoreUpdate.current = true
       setSyncing(true)
       const docRef = doc(db, 'users', user.uid)
