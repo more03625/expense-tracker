@@ -8,7 +8,8 @@ import {
   Home, LayoutDashboard, Wallet, Copy, AlertTriangle, ChevronLeft,
   ChevronRight as ChevronRightIcon, Coffee, Car, Heart, Film, Zap,
   MoreHorizontal, Search, Bell, CircleDot, Upload, FileText, FileSpreadsheet,
-  Menu, Database, HardDrive, LogIn, LogOut, Cloud, CloudOff, Loader2
+  Menu, Database, HardDrive, LogIn, LogOut, Cloud, CloudOff, Loader2,
+  Shield, Info
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
@@ -874,7 +875,7 @@ function exportToExcel(monthData, monthKey) {
   const sortedDaily = [...dailyExpenses].sort((a, b) => a.date.localeCompare(b.date))
   sortedDaily.forEach(e => {
     const subs = (e.subItems || []).map(s => `${s.name}: ${s.amount}`).join('; ')
-    sheetData.push([e.title, e.amount, subs])
+    sheetData.push([e.title, e.amount, subs, e.description || ''])
   })
   while (sheetData.length < 6) sheetData.push([])
 
@@ -915,11 +916,11 @@ function downloadSampleExcel() {
   data[0] = ['Rahul', 200000, '', '', '', '', '', '', '', '', '', '', '']
   data[1] = ['Yogesh', 25000]
   data[2] = []
-  data[3] = ['Colaba Lunch', 1024]
-  data[4] = ['Petrol', 300]
-  data[5] = ['Eggs', 200]
-  data[6] = ['ICICI Credit Card', 11482, 'Amazon: 4163; Speaker: 419; PUC: 125; Recharge: 889', '', '', '', '', 'Rent', 23000, 5, '', '', 'Yes']
-  data[7] = ['Shobha', 1000, '', '', '', '', '', 'Car Loan', 8213, 9, '', '', 'No']
+  data[3] = ['Colaba Lunch', 1024, '', 'Team outing at Colaba']
+  data[4] = ['Petrol', 300, '', '']
+  data[5] = ['Eggs', 200, '', 'Weekly groceries']
+  data[6] = ['ICICI Credit Card', 11482, 'Amazon: 4163; Speaker: 419; PUC: 125; Recharge: 889', 'Monthly CC bill', '', '', '', 'Rent', 23000, 5, '', '', 'Yes']
+  data[7] = ['Shobha', 1000, '', 'Birthday gift', '', '', '', 'Car Loan', 8213, 9, '', '', 'No']
   data[8] = ['CNG', 540, '', '', '', '', '', 'HDFC Credit Card', 10335, 12, '', 'Amazon: 4163; Speaker: 419', 'No']
   data[9] = ['', '', '', '', '', '', '', 'Insurance', 3869, 4, '', '', 'Yes']
   data[10] = ['', '', '', '', '', '', '', 'Parking', 2200, 1, '', '', 'Yes']
@@ -944,10 +945,10 @@ function downloadSampleJSON() {
         { name: 'HDFC Credit Card', amount: 10335, dueDate: 12, description: '', subItems: [{ name: 'Amazon', amount: 4163 }, { name: 'Speaker', amount: 419 }], paid: false }
       ],
       dailyExpenses: [
-        { title: 'Colaba Lunch', description: '', amount: 1024, category: 'Food', date: `${mk}-08`, paymentMethod: 'UPI', subItems: [] },
+        { title: 'Colaba Lunch', description: 'Team outing at Colaba', amount: 1024, category: 'Food', date: `${mk}-08`, paymentMethod: 'UPI', subItems: [] },
         { title: 'Petrol', description: '', amount: 300, category: 'Transport', date: `${mk}-08`, paymentMethod: 'UPI', subItems: [] },
-        { title: 'ICICI Credit Card', description: '', amount: 11482, category: 'Bills', date: `${mk}-01`, paymentMethod: 'Card', subItems: [{ name: 'Amazon', amount: 4163 }, { name: 'Speaker', amount: 419 }, { name: 'PUC', amount: 125 }, { name: 'Recharge', amount: 889 }] },
-        { title: 'Eggs', description: '', amount: 200, category: 'Food', date: `${mk}-08`, paymentMethod: 'Cash', subItems: [] }
+        { title: 'ICICI Credit Card', description: 'Monthly CC bill', amount: 11482, category: 'Bills', date: `${mk}-01`, paymentMethod: 'Card', subItems: [{ name: 'Amazon', amount: 4163 }, { name: 'Speaker', amount: 419 }, { name: 'PUC', amount: 125 }, { name: 'Recharge', amount: 889 }] },
+        { title: 'Eggs', description: 'Weekly groceries', amount: 200, category: 'Food', date: `${mk}-08`, paymentMethod: 'Cash', subItems: [] }
       ]
     }
   }
@@ -998,7 +999,8 @@ function parseExcelSheet(file) {
               if (match) return { id: genId(), name: match[1].trim(), amount: Number(match[2]) }
               return s.trim() ? { id: genId(), name: s.trim(), amount: 0 } : null
             }).filter(Boolean) : []
-            dailyExpenses.push({ title: String(title).trim(), amount: Number(amount), subItems })
+            const description = String(cellVal(sheet, 'D', r) || '').trim()
+            dailyExpenses.push({ title: String(title).trim(), amount: Number(amount), subItems, description })
           }
         }
 
@@ -1103,7 +1105,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
     const members = parsed.members.map(m => ({ id: genId(), ...m }))
     const fixed = parsed.fixedExpenses.map(e => ({ id: genId(), ...e }))
     const daily = parsed.dailyExpenses.map(e => ({
-      id: genId(), title: e.title, description: '', amount: e.amount,
+      id: genId(), title: e.title, description: e.description || '', amount: e.amount,
       category: dailyCategory, date: dailyDate, paymentMethod: dailyPayment,
       subItems: e.subItems || []
     }))
@@ -1193,7 +1195,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
                 <p className="text-sm font-medium text-slate-300 mb-2">Expected Excel Layout</p>
                 <div className="space-y-1.5 text-xs text-slate-400">
                   <p><span className="text-gold-400 font-medium">Col A-B, Row 1-2:</span> Income members (Name, Salary)</p>
-                  <p><span className="text-gold-400 font-medium">Col A-C, Row 4-50:</span> Daily expenses (Title, Amount, Sub-items)</p>
+                  <p><span className="text-gold-400 font-medium">Col A-D, Row 4-50:</span> Daily expenses (Title, Amount, Sub-items, Description)</p>
                   <p><span className="text-gold-400 font-medium">Col H-M, Row 7-50:</span> Fixed expenses (Name, Amount, Due Date, Description, Sub-items, Paid?)</p>
                   <p className="text-slate-500 mt-1">Sub-items format: <span className="text-slate-400">Amazon: 4163; Speaker: 419</span> (semicolon-separated)</p>
                 </div>
@@ -1378,6 +1380,155 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// PRIVACY POLICY PAGE
+// ══════════════════════════════════════════════════════════════════════
+function PrivacyPolicyPage() {
+  const sections = [
+    {
+      title: 'Information We Collect',
+      items: [
+        'When you sign in with Google, we receive your name, email address, and profile picture from Google. This is used solely to identify your account.',
+        'Your financial data (income members, fixed expenses, daily expenses) is entered by you and stored to provide the app\'s core functionality.',
+      ]
+    },
+    {
+      title: 'How Your Data is Stored',
+      items: [
+        'Signed in: Your data is stored in Google Cloud Firestore, tied to your Google account. It syncs in real-time across all your devices.',
+        'Not signed in: Your data is stored only in your browser\'s localStorage. It never leaves your device.',
+        'We do not store your data on any other servers or share it with any third parties.',
+      ]
+    },
+    {
+      title: 'Third-Party Services',
+      items: [
+        'Firebase Authentication (Google) — for sign-in only.',
+        'Cloud Firestore — for cloud data storage when signed in.',
+        'We do not use any analytics, advertising, or tracking services.',
+      ]
+    },
+    {
+      title: 'Data Deletion',
+      items: [
+        'Sign out to disconnect from cloud storage. Your local data remains on the device.',
+        'To delete cloud data, you can clear your data from the app before signing out, or contact us to request account deletion.',
+        'To delete local data, clear your browser\'s site data for this app.',
+      ]
+    },
+    {
+      title: 'Data Security',
+      items: [
+        'All data transmitted to and from Firestore is encrypted in transit using HTTPS/TLS.',
+        'Firestore access is restricted by Firebase Security Rules — only you can read and write your own data.',
+        'We do not have access to your financial data.',
+      ]
+    },
+    {
+      title: 'Changes to This Policy',
+      items: [
+        'We may update this privacy policy from time to time. Any changes will be reflected on this page.',
+      ]
+    },
+  ]
+
+  return (
+    <div className="space-y-6 max-w-3xl mx-auto">
+      <div>
+        <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1"><Shield className="w-5 h-5 text-gold-400" /> Privacy Policy</h2>
+        <p className="text-sm text-slate-400">Last updated: March 2026</p>
+      </div>
+
+      <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
+        <p className="text-sm text-slate-300 leading-relaxed">
+          Finance Tracker is a personal budgeting tool that respects your privacy. We collect only what is necessary to provide the app's functionality and give you full control over your data.
+        </p>
+      </div>
+
+      {sections.map((section, i) => (
+        <div key={i} className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
+          <h3 className="text-sm font-semibold text-white mb-3">{section.title}</h3>
+          <ul className="space-y-2">
+            {section.items.map((item, j) => (
+              <li key={j} className="flex gap-2.5 text-sm text-slate-400 leading-relaxed">
+                <span className="text-gold-500 mt-1.5 flex-shrink-0">•</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+
+      <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
+        <h3 className="text-sm font-semibold text-white mb-2">Contact</h3>
+        <p className="text-sm text-slate-400">If you have any questions about this privacy policy or your data, please reach out to us.</p>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ABOUT PAGE
+// ══════════════════════════════════════════════════════════════════════
+function AboutPage() {
+  const features = [
+    { icon: Users, label: 'Income Members', desc: 'Track household earning members and monthly salaries' },
+    { icon: CreditCard, label: 'Fixed Expenses', desc: 'Manage recurring bills like rent, EMIs, and insurance with sub-item breakdowns' },
+    { icon: ShoppingCart, label: 'Daily Expenses', desc: 'Log day-to-day spending by category with sub-item support' },
+    { icon: LayoutDashboard, label: 'Dashboard', desc: 'Visual overview with charts, budget progress, and savings tracking' },
+    { icon: Upload, label: 'Import', desc: 'Bulk import from Excel files or JSON data' },
+    { icon: Download, label: 'Export', desc: 'Download your data as CSV, Excel, or JSON' },
+    { icon: Cloud, label: 'Cloud Sync', desc: 'Sign in with Google to sync across all your devices in real-time' },
+    { icon: Calendar, label: 'Monthly Organization', desc: 'Each month has independent data with easy navigation and carry-over' },
+  ]
+
+  return (
+    <div className="space-y-6 max-w-3xl mx-auto">
+      <div>
+        <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1"><Info className="w-5 h-5 text-gold-400" /> About</h2>
+        <p className="text-sm text-slate-400">Finance Tracker v1.0.0</p>
+      </div>
+
+      <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-11 h-11 bg-gradient-to-br from-gold-400 to-gold-600 rounded-xl flex items-center justify-center">
+            <Wallet className="w-6 h-6 text-navy-950" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white">Finance Tracker</h3>
+            <p className="text-xs text-slate-400">Personal money manager for Indian households</p>
+          </div>
+        </div>
+        <p className="text-sm text-slate-300 leading-relaxed">
+          A comprehensive personal finance tracker built for managing household income, fixed monthly bills, and day-to-day expenses. Organize your finances month by month, visualize spending patterns, and keep your budget on track — all from your browser.
+        </p>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-white mb-3 px-1">Features</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {features.map((f, i) => (
+            <div key={i} className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-4 flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-gold-500/10 flex items-center justify-center flex-shrink-0">
+                <f.icon className="w-4.5 h-4.5 text-gold-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white">{f.label}</p>
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{f.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5 text-center">
+        <p className="text-sm text-slate-400">Built with care for personal finance management.</p>
+        <p className="text-xs text-slate-500 mt-1">Made in India</p>
       </div>
     </div>
   )
@@ -1736,6 +1887,19 @@ export default function App() {
             </button>
           </nav>
 
+          {/* Info section */}
+          <nav className="px-3 pb-2">
+            <p className="px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500 border-t border-navy-700/30">Info</p>
+            <button onClick={() => { setActiveTab('privacy'); setSidebarOpen(false) }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${activeTab === 'privacy' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+              <Shield className="w-4.5 h-4.5" /> Privacy Policy
+            </button>
+            <button onClick={() => { setActiveTab('about'); setSidebarOpen(false) }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${activeTab === 'about' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+              <Info className="w-4.5 h-4.5" /> About
+            </button>
+          </nav>
+
           {/* Account & Sync */}
           <div className="p-4 border-t border-navy-700/30 bg-navy-950/30">
             {authLoading ? (
@@ -1878,6 +2042,8 @@ export default function App() {
         {activeTab === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
         {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} />}
         {activeTab === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} />}
+        {activeTab === 'privacy' && <PrivacyPolicyPage />}
+        {activeTab === 'about' && <AboutPage />}
       </main>
 
       {/* Mobile Bottom Nav */}
