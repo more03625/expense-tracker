@@ -30,26 +30,7 @@ function parseMonthKey(k) { const [y, m] = k.split('-'); return new Date(parseIn
 function monthLabel(k) { return parseMonthKey(k).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) }
 function dayLabel(d) { return new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) }
 
-function parseBulkLines(text) {
-  return text.trim().split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .map(line => {
-      const tabParts = line.split('\t').map(s => s.trim()).filter(Boolean)
-      if (tabParts.length >= 2) {
-        const amount = Number(tabParts[tabParts.length - 1])
-        const rest = tabParts.slice(0, -1)
-        if (!isNaN(amount) && amount > 0) return { parts: rest, amount }
-      }
-      const words = line.split(/\s+/)
-      const amount = Number(words[words.length - 1])
-      if (!isNaN(amount) && amount > 0 && words.length >= 2) {
-        return { parts: [words.slice(0, -1).join(' ')], amount }
-      }
-      return null
-    })
-    .filter(Boolean)
-}
+
 
 function loadData() {
   try { return JSON.parse(localStorage.getItem('financeData')) || {} } catch { return {} }
@@ -254,9 +235,6 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
   const [editId, setEditId] = useState(null)
   const [expanded, setExpanded] = useState({})
   const [confirmDelete, setConfirmDelete] = useState(null)
-  const [showBulk, setShowBulk] = useState(false)
-  const [bulkText, setBulkText] = useState('')
-  const [bulkPreview, setBulkPreview] = useState([])
 
   const [form, setForm] = useState({ name: '', amount: '', dueDate: '', description: '', subItems: [] })
   const [subName, setSubName] = useState('')
@@ -317,28 +295,6 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
     }
   }
 
-  function openBulkFixed() { setShowBulk(true); setBulkText(''); setBulkPreview([]) }
-
-  function previewBulkFixed(text) {
-    setBulkText(text)
-    const items = parseBulkLines(text).map(p => {
-      const dueDate = p.parts.length >= 2 ? Number(p.parts[1]) : 1
-      return { name: p.parts[0], amount: p.amount, dueDate: (!isNaN(dueDate) && dueDate >= 1 && dueDate <= 31) ? dueDate : 1 }
-    })
-    setBulkPreview(items)
-  }
-
-  function importBulkFixed() {
-    if (bulkPreview.length === 0) return toast('Nothing to import — paste expenses first', 'error')
-    const newExpenses = bulkPreview.map(item => ({
-      id: genId(), name: item.name, amount: item.amount, dueDate: item.dueDate,
-      description: '', subItems: [], paid: false
-    }))
-    onUpdate([...expenses, ...newExpenses])
-    toast(`Imported ${newExpenses.length} fixed expenses`)
-    setShowBulk(false)
-  }
-
   return (
     <div className="space-y-4">
       <ConfirmDialog
@@ -358,14 +314,9 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
             {' · '}Pending: <span className="text-gold-400 font-semibold">{fmt(total - paidTotal)}</span>
           </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={openBulkFixed} className="flex items-center gap-2 px-4 py-2 bg-navy-800 hover:bg-navy-700 text-slate-200 rounded-xl font-semibold text-sm transition-colors border border-navy-700/30">
-            <Upload className="w-4 h-4" /> Bulk Import
-          </button>
-          <button onClick={() => { resetForm(); setShowForm(true) }} className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 text-navy-950 rounded-xl font-semibold text-sm transition-colors">
-            <Plus className="w-4 h-4" /> Add
-          </button>
-        </div>
+        <button onClick={() => { resetForm(); setShowForm(true) }} className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 text-navy-950 rounded-xl font-semibold text-sm transition-colors">
+          <Plus className="w-4 h-4" /> Add Expense
+        </button>
       </div>
 
       {expenses.length === 0 && !showForm && (
@@ -463,48 +414,6 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
         </form>
       </Modal>
 
-      {/* Bulk Import Modal */}
-      <Modal open={showBulk} onClose={() => setShowBulk(false)} title="Bulk Import Fixed Expenses">
-        <div className="space-y-4">
-          <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-3">
-            <p className="text-xs text-slate-400 mb-1">Paste fixed expenses — one per line.</p>
-            <p className="text-xs text-slate-500">Format: <span className="text-gold-400">Name  Amount</span> or <span className="text-gold-400">Name  Amount  DueDate</span></p>
-            <p className="text-xs text-slate-500 mt-1">Separated by tab. Due date defaults to 1st if not provided.</p>
-          </div>
-
-          <textarea value={bulkText} onChange={e => previewBulkFixed(e.target.value)} rows={10}
-            placeholder={"Rent\t15000\t6\nCar Loan\t8500\t2\nParking\t2500"}
-            className="w-full bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-3 text-white placeholder-slate-600 text-sm font-mono focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 resize-none" />
-
-          {bulkPreview.length > 0 && (
-            <div className="border border-navy-700/30 rounded-xl overflow-hidden">
-              <div className="bg-navy-800/50 px-4 py-2 flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-300 flex items-center gap-2"><FileText className="w-3.5 h-3.5" /> Preview — {bulkPreview.length} items</p>
-                <p className="text-xs font-semibold text-gold-400">{fmt(bulkPreview.reduce((s, i) => s + i.amount, 0))}</p>
-              </div>
-              <div className="max-h-48 overflow-y-auto divide-y divide-navy-700/20">
-                {bulkPreview.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-300">{item.name}</span>
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-navy-800 text-slate-500">Due: {item.dueDate}{item.dueDate === 1 ? 'st' : item.dueDate === 2 ? 'nd' : item.dueDate === 3 ? 'rd' : 'th'}</span>
-                    </div>
-                    <span className="text-red-400 font-medium">{fmt(item.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2 justify-end pt-2">
-            <button onClick={() => setShowBulk(false)} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-medium transition-colors">Cancel</button>
-            <button onClick={importBulkFixed} disabled={bulkPreview.length === 0}
-              className="px-4 py-2 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-              Import {bulkPreview.length} Expenses
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }
@@ -518,13 +427,6 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [filter, setFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
-  const [showBulk, setShowBulk] = useState(false)
-  const [bulkText, setBulkText] = useState('')
-  const [bulkDate, setBulkDate] = useState('')
-  const [bulkCategory, setBulkCategory] = useState('Other')
-  const [bulkPayment, setBulkPayment] = useState('UPI')
-  const [bulkPreview, setBulkPreview] = useState([])
-
   const today = new Date().toISOString().slice(0, 10)
   const [form, setForm] = useState({ title: '', description: '', amount: '', category: CATEGORIES[0], date: today, paymentMethod: PAYMENT_METHODS[1] })
 
@@ -576,25 +478,6 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
     }
   }
 
-  function openBulk() { setShowBulk(true); setBulkText(''); setBulkPreview([]); setBulkDate(today); setBulkCategory('Other'); setBulkPayment('UPI') }
-
-  function previewBulk(text) {
-    setBulkText(text)
-    setBulkPreview(parseBulkLines(text).map(p => ({ title: p.parts[0], amount: p.amount })))
-  }
-
-  function importBulk() {
-    if (bulkPreview.length === 0) return toast('Nothing to import — paste expenses first', 'error')
-    const newExpenses = bulkPreview.map(item => ({
-      id: genId(), title: item.title, description: '', amount: item.amount,
-      category: bulkCategory, date: bulkDate, paymentMethod: bulkPayment
-    }))
-    onAddExpenses(newExpenses)
-    const targetMonth = bulkDate.slice(0, 7)
-    toast(`Imported ${newExpenses.length} expenses into ${monthLabel(targetMonth)}`)
-    setShowBulk(false)
-  }
-
   let filtered = [...expenses]
   if (filter === 'today') filtered = filtered.filter(e => e.date === today)
   if (searchTerm) filtered = filtered.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase()) || e.category.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -623,14 +506,9 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
             {' · '}{filtered.length} expense{filtered.length !== 1 && 's'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={openBulk} className="flex items-center gap-2 px-4 py-2 bg-navy-800 hover:bg-navy-700 text-slate-200 rounded-xl font-semibold text-sm transition-colors border border-navy-700/30">
-            <Upload className="w-4 h-4" /> Bulk Import
-          </button>
-          <button onClick={() => { resetForm(); setShowForm(true) }} className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 text-navy-950 rounded-xl font-semibold text-sm transition-colors">
-            <Plus className="w-4 h-4" /> Add
-          </button>
-        </div>
+        <button onClick={() => { resetForm(); setShowForm(true) }} className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 text-navy-950 rounded-xl font-semibold text-sm transition-colors">
+          <Plus className="w-4 h-4" /> Add Expense
+        </button>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -705,50 +583,6 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
         </form>
       </Modal>
 
-      {/* Bulk Import Modal */}
-      <Modal open={showBulk} onClose={() => setShowBulk(false)} title="Bulk Import Daily Expenses">
-        <div className="space-y-4">
-          <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-3">
-            <p className="text-xs text-slate-400 mb-1">Paste expenses — one per line. Format: <span className="text-gold-400">Title  Amount</span></p>
-            <p className="text-xs text-slate-500">Separated by tab or spaces. E.g. "Petrol  300" or "Lunch  150"</p>
-          </div>
-
-          <textarea value={bulkText} onChange={e => previewBulk(e.target.value)} rows={10}
-            placeholder={"Petrol\t300\nLunch\t150\nMedicine\t500"}
-            className="w-full bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-3 text-white placeholder-slate-600 text-sm font-mono focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 resize-none" />
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Input label="Date (all items)" type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} />
-            <Select label="Category (all)" options={CATEGORIES} value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} />
-            <Select label="Payment Method (all)" options={PAYMENT_METHODS} value={bulkPayment} onChange={e => setBulkPayment(e.target.value)} />
-          </div>
-
-          {bulkPreview.length > 0 && (
-            <div className="border border-navy-700/30 rounded-xl overflow-hidden">
-              <div className="bg-navy-800/50 px-4 py-2 flex items-center justify-between">
-                <p className="text-xs font-medium text-slate-300 flex items-center gap-2"><FileText className="w-3.5 h-3.5" /> Preview — {bulkPreview.length} items</p>
-                <p className="text-xs font-semibold text-gold-400">{fmt(bulkPreview.reduce((s, i) => s + i.amount, 0))}</p>
-              </div>
-              <div className="max-h-48 overflow-y-auto divide-y divide-navy-700/20">
-                {bulkPreview.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="text-slate-300">{item.title}</span>
-                    <span className="text-red-400 font-medium">{fmt(item.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2 justify-end pt-2">
-            <button onClick={() => setShowBulk(false)} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-medium transition-colors">Cancel</button>
-            <button onClick={importBulk} disabled={bulkPreview.length === 0}
-              className="px-4 py-2 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-              Import {bulkPreview.length} Expenses
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }
@@ -930,6 +764,100 @@ function exportToCSV(monthData, monthKey) {
   URL.revokeObjectURL(url)
 }
 
+function exportToExcel(monthData, monthKey) {
+  const { members = [], fixedExpenses = [], dailyExpenses = [] } = monthData
+  const wb = XLSX.utils.book_new()
+
+  const sheetData = []
+  members.forEach(m => { sheetData.push([m.name, m.salary]) })
+  while (sheetData.length < 3) sheetData.push([])
+
+  const sortedDaily = [...dailyExpenses].sort((a, b) => a.date.localeCompare(b.date))
+  sortedDaily.forEach(e => { sheetData.push([e.title, e.amount]) })
+  while (sheetData.length < 6) sheetData.push([])
+
+  for (let r = 6; r < Math.max(6, 6 + fixedExpenses.length); r++) {
+    const fe = fixedExpenses[r - 6]
+    const row = sheetData[r] || []
+    while (row.length < 7) row.push('')
+    if (fe) {
+      row[7] = fe.name
+      row[8] = fe.amount
+      row[9] = fe.dueDate
+      row[10] = fe.description || ''
+      row[11] = (fe.subItems || []).map(s => `${s.name}: ${s.amount}`).join('; ')
+      row[12] = fe.paid ? 'Yes' : 'No'
+    }
+    sheetData[r] = row
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetData)
+  XLSX.utils.book_append_sheet(wb, ws, monthLabel(monthKey))
+  XLSX.writeFile(wb, `finance-${monthKey}.xlsx`)
+}
+
+function exportToJSON(allData, monthKey) {
+  const json = JSON.stringify(allData, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `finance-all-${monthKey}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function downloadSampleExcel() {
+  const wb = XLSX.utils.book_new()
+  const data = []
+  data[0] = ['Rahul', 200000, '', '', '', '', '', '', '', '', '', '', '']
+  data[1] = ['Yogesh', 25000]
+  data[2] = []
+  data[3] = ['Colaba Lunch', 1024]
+  data[4] = ['Petrol', 300]
+  data[5] = ['Eggs', 200]
+  data[6] = ['Groceries', 1500, '', '', '', '', '', 'Rent', 23000, 5, '', '', 'Yes']
+  data[7] = ['Shobha', 1000, '', '', '', '', '', 'Car Loan', 8213, 9, '', '', 'No']
+  data[8] = ['CNG', 540, '', '', '', '', '', 'HDFC Credit Card', 10335, 12, '', 'Amazon: 4163; Speaker: 419', 'No']
+  data[9] = ['', '', '', '', '', '', '', 'Insurance', 3869, 4, '', '', 'Yes']
+  data[10] = ['', '', '', '', '', '', '', 'Parking', 2200, 1, '', '', 'Yes']
+
+  const ws = XLSX.utils.aoa_to_sheet(data)
+  XLSX.utils.book_append_sheet(wb, ws, 'Sample')
+  XLSX.writeFile(wb, 'finance-sample-import.xlsx')
+}
+
+function downloadSampleJSON() {
+  const today = new Date()
+  const mk = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  const sample = {
+    [mk]: {
+      members: [
+        { name: 'Rahul', salary: 200000 },
+        { name: 'Yogesh', salary: 25000 }
+      ],
+      fixedExpenses: [
+        { name: 'Rent', amount: 23000, dueDate: 5, description: '', subItems: [], paid: true },
+        { name: 'Car Loan', amount: 8213, dueDate: 9, description: '', subItems: [], paid: false },
+        { name: 'HDFC Credit Card', amount: 10335, dueDate: 12, description: '', subItems: [{ name: 'Amazon', amount: 4163 }, { name: 'Speaker', amount: 419 }], paid: false }
+      ],
+      dailyExpenses: [
+        { title: 'Colaba Lunch', description: '', amount: 1024, category: 'Food', date: `${mk}-08`, paymentMethod: 'UPI' },
+        { title: 'Petrol', description: '', amount: 300, category: 'Transport', date: `${mk}-08`, paymentMethod: 'UPI' },
+        { title: 'Eggs', description: '', amount: 200, category: 'Food', date: `${mk}-08`, paymentMethod: 'Cash' }
+      ]
+    }
+  }
+  const json = JSON.stringify(sample, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'finance-sample-import.json'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // EXCEL IMPORT
 // ══════════════════════════════════════════════════════════════════════
@@ -1015,13 +943,17 @@ function parseExcelSheet(file) {
   })
 }
 
-function ExcelImportModal({ open, onClose, onImport, toast, currentMonth }) {
+function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMonth }) {
+  const [mode, setMode] = useState('excel')
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
   const [loading, setLoading] = useState(false)
   const [dailyDate, setDailyDate] = useState('')
   const [dailyCategory, setDailyCategory] = useState('Other')
   const [dailyPayment, setDailyPayment] = useState('UPI')
+  const [jsonText, setJsonText] = useState('')
+  const [jsonParsed, setJsonParsed] = useState(null)
+  const [jsonError, setJsonError] = useState('')
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -1034,10 +966,13 @@ function ExcelImportModal({ open, onClose, onImport, toast, currentMonth }) {
       setFile(null)
       setParsed(null)
       setLoading(false)
+      setJsonText('')
+      setJsonParsed(null)
+      setJsonError('')
     }
   }, [open, currentMonth])
 
-  function reset() { setFile(null); setParsed(null); setLoading(false) }
+  function reset() { setFile(null); setParsed(null); setLoading(false); setJsonText(''); setJsonParsed(null); setJsonError('') }
 
   async function handleFile(e) {
     const f = e.target.files?.[0]
@@ -1054,7 +989,7 @@ function ExcelImportModal({ open, onClose, onImport, toast, currentMonth }) {
     setLoading(false)
   }
 
-  function handleImport() {
+  function handleExcelImport() {
     if (!parsed) return
     const members = parsed.members.map(m => ({ id: genId(), ...m }))
     const fixed = parsed.fixedExpenses.map(e => ({ id: genId(), ...e }))
@@ -1063,6 +998,35 @@ function ExcelImportModal({ open, onClose, onImport, toast, currentMonth }) {
       category: dailyCategory, date: dailyDate, paymentMethod: dailyPayment
     }))
     onImport({ members, fixedExpenses: fixed, dailyExpenses: daily, dailyDate })
+    reset()
+    onClose()
+  }
+
+  function parseJson(text) {
+    setJsonText(text)
+    setJsonError('')
+    setJsonParsed(null)
+    if (!text.trim()) return
+    try {
+      const data = JSON.parse(text)
+      if (typeof data !== 'object' || data === null) throw new Error('Must be a JSON object')
+      let totalMonths = 0, totalMembers = 0, totalFixed = 0, totalDaily = 0
+      for (const [key, val] of Object.entries(data)) {
+        if (!/^\d{4}-\d{2}$/.test(key)) throw new Error(`Invalid month key: "${key}". Use YYYY-MM format`)
+        totalMonths++
+        totalMembers += (val.members || []).length
+        totalFixed += (val.fixedExpenses || []).length
+        totalDaily += (val.dailyExpenses || []).length
+      }
+      setJsonParsed({ data, totalMonths, totalMembers, totalFixed, totalDaily })
+    } catch (err) {
+      setJsonError(err.message)
+    }
+  }
+
+  function handleJsonImport() {
+    if (!jsonParsed) return
+    onJsonImport(jsonParsed.data)
     reset()
     onClose()
   }
@@ -1077,140 +1041,213 @@ function ExcelImportModal({ open, onClose, onImport, toast, currentMonth }) {
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={() => { reset(); onClose() }}>
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 max-w-2xl w-full shadow-2xl animate-slide-in max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-emerald-400" /> Import from Excel</h3>
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2"><Upload className="w-5 h-5 text-emerald-400" /> Import Data</h3>
           <button onClick={() => { reset(); onClose() }} className="w-8 h-8 rounded-lg bg-slate-700/50 hover:bg-slate-600 flex items-center justify-center transition-colors"><X className="w-4 h-4" /></button>
         </div>
 
-        {/* File Upload */}
-        <div className="mb-5">
-          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="hidden" />
-          <button onClick={() => fileInputRef.current?.click()}
-            className={`w-full border-2 border-dashed rounded-xl p-8 text-center transition-colors ${file ? 'border-emerald-500/40 bg-emerald-950/20' : 'border-navy-700/50 hover:border-gold-500/40 bg-navy-950/30'}`}>
-            {loading ? (
-              <p className="text-slate-400">Parsing...</p>
-            ) : file ? (
-              <div>
-                <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 text-emerald-400" />
-                <p className="text-emerald-400 font-medium">{file.name}</p>
-                <p className="text-xs text-slate-500 mt-1">Click to change file</p>
-              </div>
-            ) : (
-              <div>
-                <Upload className="w-8 h-8 mx-auto mb-2 text-slate-500" />
-                <p className="text-slate-400 font-medium">Click to upload Excel file</p>
-                <p className="text-xs text-slate-500 mt-1">.xlsx, .xls, or .csv</p>
-              </div>
-            )}
-          </button>
+        {/* Mode Tabs */}
+        <div className="flex bg-navy-950/50 border border-navy-700/30 rounded-xl overflow-hidden mb-5">
+          {[['excel', 'Excel File'], ['json', 'JSON Data']].map(([id, label]) => (
+            <button key={id} onClick={() => setMode(id)}
+              className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${mode === id ? 'bg-gold-500 text-navy-950' : 'text-slate-400 hover:text-white'}`}>{label}</button>
+          ))}
         </div>
 
-        {/* Expected Layout Info */}
-        {!parsed && (
-          <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-4 mb-5">
-            <p className="text-sm font-medium text-slate-300 mb-2">Expected Excel Layout</p>
-            <div className="space-y-1.5 text-xs text-slate-400">
-              <p><span className="text-gold-400 font-medium">Col A-B, Row 1-2:</span> Income members (Name, Salary)</p>
-              <p><span className="text-gold-400 font-medium">Col A-B, Row 4-50:</span> Daily expenses (Title, Amount)</p>
-              <p><span className="text-gold-400 font-medium">Col H-M, Row 7-50:</span> Fixed expenses (Name, Amount, Due Date, Description, Sub-items, Paid?)</p>
+        {/* ── EXCEL MODE ── */}
+        {mode === 'excel' && (
+          <>
+            <div className="mb-5">
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="hidden" />
+              <button onClick={() => fileInputRef.current?.click()}
+                className={`w-full border-2 border-dashed rounded-xl p-8 text-center transition-colors ${file ? 'border-emerald-500/40 bg-emerald-950/20' : 'border-navy-700/50 hover:border-gold-500/40 bg-navy-950/30'}`}>
+                {loading ? (
+                  <p className="text-slate-400">Parsing...</p>
+                ) : file ? (
+                  <div>
+                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 text-emerald-400" />
+                    <p className="text-emerald-400 font-medium">{file.name}</p>
+                    <p className="text-xs text-slate-500 mt-1">Click to change file</p>
+                  </div>
+                ) : (
+                  <div>
+                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 text-slate-500" />
+                    <p className="text-slate-400 font-medium">Click to upload Excel file</p>
+                    <p className="text-xs text-slate-500 mt-1">.xlsx, .xls, or .csv</p>
+                  </div>
+                )}
+              </button>
             </div>
-          </div>
+
+            {!parsed && (
+              <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-4 mb-5">
+                <p className="text-sm font-medium text-slate-300 mb-2">Expected Excel Layout</p>
+                <div className="space-y-1.5 text-xs text-slate-400">
+                  <p><span className="text-gold-400 font-medium">Col A-B, Row 1-2:</span> Income members (Name, Salary)</p>
+                  <p><span className="text-gold-400 font-medium">Col A-B, Row 4-50:</span> Daily expenses (Title, Amount)</p>
+                  <p><span className="text-gold-400 font-medium">Col H-M, Row 7-50:</span> Fixed expenses (Name, Amount, Due Date, Description, Sub-items, Paid?)</p>
+                </div>
+                <button onClick={downloadSampleExcel}
+                  className="mt-3 flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors">
+                  <Download className="w-3.5 h-3.5" /> Download sample Excel file
+                </button>
+              </div>
+            )}
+
+            {parsed && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Members</p>
+                    <p className="text-lg font-bold text-emerald-400">{parsed.members.length}</p>
+                    <p className="text-xs text-slate-500">{fmt(totalIncome)}</p>
+                  </div>
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Daily</p>
+                    <p className="text-lg font-bold text-blue-400">{parsed.dailyExpenses.length}</p>
+                    <p className="text-xs text-slate-500">{fmt(totalDaily)}</p>
+                  </div>
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Fixed</p>
+                    <p className="text-lg font-bold text-red-400">{parsed.fixedExpenses.length}</p>
+                    <p className="text-xs text-slate-500">{fmt(totalFixed)}</p>
+                  </div>
+                </div>
+
+                {parsed.dailyExpenses.length > 0 && (
+                  <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-4 space-y-3">
+                    <p className="text-sm font-medium text-slate-300">Daily Expense Defaults</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Input label="Date" type="date" value={dailyDate} onChange={e => setDailyDate(e.target.value)} />
+                      <Select label="Category" options={CATEGORIES} value={dailyCategory} onChange={e => setDailyCategory(e.target.value)} />
+                      <Select label="Payment" options={PAYMENT_METHODS} value={dailyPayment} onChange={e => setDailyPayment(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {parsed.members.length > 0 && (
+                  <div className="border border-navy-700/30 rounded-xl overflow-hidden">
+                    <div className="bg-navy-800/50 px-4 py-2"><p className="text-xs font-medium text-slate-300">Income Members</p></div>
+                    <div className="divide-y divide-navy-700/20">
+                      {parsed.members.map((m, i) => (
+                        <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
+                          <span className="text-slate-300">{m.name}</span>
+                          <span className="text-emerald-400 font-medium">{fmt(m.salary)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {parsed.dailyExpenses.length > 0 && (
+                  <div className="border border-navy-700/30 rounded-xl overflow-hidden">
+                    <div className="bg-navy-800/50 px-4 py-2 flex justify-between">
+                      <p className="text-xs font-medium text-slate-300">Daily Expenses</p>
+                      <p className="text-xs font-semibold text-gold-400">{fmt(totalDaily)}</p>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto divide-y divide-navy-700/20">
+                      {parsed.dailyExpenses.map((e, i) => (
+                        <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
+                          <span className="text-slate-300">{e.title}</span>
+                          <span className="text-red-400 font-medium">{fmt(e.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {parsed.fixedExpenses.length > 0 && (
+                  <div className="border border-navy-700/30 rounded-xl overflow-hidden">
+                    <div className="bg-navy-800/50 px-4 py-2 flex justify-between">
+                      <p className="text-xs font-medium text-slate-300">Fixed Expenses</p>
+                      <p className="text-xs font-semibold text-gold-400">{fmt(totalFixed)}</p>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto divide-y divide-navy-700/20">
+                      {parsed.fixedExpenses.map((e, i) => (
+                        <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
+                          <div>
+                            <span className="text-slate-300">{e.name}</span>
+                            <span className="text-xs text-slate-500 ml-2">Due: {e.dueDate}{e.dueDate === 1 ? 'st' : e.dueDate === 2 ? 'nd' : e.dueDate === 3 ? 'rd' : 'th'}</span>
+                            {e.paid && <span className="text-xs text-emerald-400 ml-2">Paid</span>}
+                          </div>
+                          <span className="text-red-400 font-medium">{fmt(e.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 justify-end pt-2">
+                  <button onClick={() => { reset(); onClose() }} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-medium transition-colors">Cancel</button>
+                  <button onClick={handleExcelImport}
+                    className="px-5 py-2 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-sm font-semibold transition-colors">
+                    Import All to {monthLabel(currentMonth)}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Preview */}
-        {parsed && (
+        {/* ── JSON MODE ── */}
+        {mode === 'json' && (
           <div className="space-y-4">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
-                <p className="text-xs text-slate-400">Members</p>
-                <p className="text-lg font-bold text-emerald-400">{parsed.members.length}</p>
-                <p className="text-xs text-slate-500">{fmt(totalIncome)}</p>
-              </div>
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
-                <p className="text-xs text-slate-400">Daily Expenses</p>
-                <p className="text-lg font-bold text-blue-400">{parsed.dailyExpenses.length}</p>
-                <p className="text-xs text-slate-500">{fmt(totalDaily)}</p>
-              </div>
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
-                <p className="text-xs text-slate-400">Fixed Expenses</p>
-                <p className="text-lg font-bold text-red-400">{parsed.fixedExpenses.length}</p>
-                <p className="text-xs text-slate-500">{fmt(totalFixed)}</p>
-              </div>
+            <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-3">
+              <p className="text-xs text-slate-400 mb-1">Paste the full JSON from localStorage — or any JSON with <span className="text-gold-400">{"\"YYYY-MM\": { members, fixedExpenses, dailyExpenses }"}</span> structure.</p>
+              <p className="text-xs text-slate-500">This <span className="text-red-400 font-medium">replaces</span> data for each month key found in the JSON. Months not in the JSON are untouched.</p>
+              <button onClick={downloadSampleJSON}
+                className="mt-2 flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors">
+                <Download className="w-3.5 h-3.5" /> Download sample JSON file
+              </button>
             </div>
 
-            {/* Daily expense options */}
-            {parsed.dailyExpenses.length > 0 && (
-              <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-4 space-y-3">
-                <p className="text-sm font-medium text-slate-300">Daily Expense Defaults</p>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Input label="Date" type="date" value={dailyDate} onChange={e => setDailyDate(e.target.value)} />
-                  <Select label="Category" options={CATEGORIES} value={dailyCategory} onChange={e => setDailyCategory(e.target.value)} />
-                  <Select label="Payment" options={PAYMENT_METHODS} value={dailyPayment} onChange={e => setDailyPayment(e.target.value)} />
+            <textarea value={jsonText} onChange={e => parseJson(e.target.value)} rows={12}
+              placeholder='{"2026-02": {"members": [...], "fixedExpenses": [...], "dailyExpenses": [...]}}'
+              className="w-full bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-3 text-white placeholder-slate-600 text-sm font-mono focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 resize-none" />
+
+            {jsonError && (
+              <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2.5">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{jsonError}</span>
+              </div>
+            )}
+
+            {jsonParsed && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-gold-500/10 border border-gold-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Months</p>
+                    <p className="text-lg font-bold text-gold-400">{jsonParsed.totalMonths}</p>
+                  </div>
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Members</p>
+                    <p className="text-lg font-bold text-emerald-400">{jsonParsed.totalMembers}</p>
+                  </div>
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Daily</p>
+                    <p className="text-lg font-bold text-blue-400">{jsonParsed.totalDaily}</p>
+                  </div>
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Fixed</p>
+                    <p className="text-lg font-bold text-red-400">{jsonParsed.totalFixed}</p>
+                  </div>
+                </div>
+
+                <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-3">
+                  <p className="text-xs font-medium text-slate-300 mb-1.5">Months to import</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.keys(jsonParsed.data).sort().map(mk => (
+                      <span key={mk} className="text-xs px-2.5 py-1 rounded-lg bg-navy-800 text-gold-400 font-medium">{monthLabel(mk)}</span>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Members Preview */}
-            {parsed.members.length > 0 && (
-              <div className="border border-navy-700/30 rounded-xl overflow-hidden">
-                <div className="bg-navy-800/50 px-4 py-2"><p className="text-xs font-medium text-slate-300">Income Members</p></div>
-                <div className="divide-y divide-navy-700/20">
-                  {parsed.members.map((m, i) => (
-                    <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                      <span className="text-slate-300">{m.name}</span>
-                      <span className="text-emerald-400 font-medium">{fmt(m.salary)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Daily Preview */}
-            {parsed.dailyExpenses.length > 0 && (
-              <div className="border border-navy-700/30 rounded-xl overflow-hidden">
-                <div className="bg-navy-800/50 px-4 py-2 flex justify-between">
-                  <p className="text-xs font-medium text-slate-300">Daily Expenses</p>
-                  <p className="text-xs font-semibold text-gold-400">{fmt(totalDaily)}</p>
-                </div>
-                <div className="max-h-40 overflow-y-auto divide-y divide-navy-700/20">
-                  {parsed.dailyExpenses.map((e, i) => (
-                    <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                      <span className="text-slate-300">{e.title}</span>
-                      <span className="text-red-400 font-medium">{fmt(e.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Fixed Preview */}
-            {parsed.fixedExpenses.length > 0 && (
-              <div className="border border-navy-700/30 rounded-xl overflow-hidden">
-                <div className="bg-navy-800/50 px-4 py-2 flex justify-between">
-                  <p className="text-xs font-medium text-slate-300">Fixed Expenses</p>
-                  <p className="text-xs font-semibold text-gold-400">{fmt(totalFixed)}</p>
-                </div>
-                <div className="max-h-40 overflow-y-auto divide-y divide-navy-700/20">
-                  {parsed.fixedExpenses.map((e, i) => (
-                    <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                      <div>
-                        <span className="text-slate-300">{e.name}</span>
-                        <span className="text-xs text-slate-500 ml-2">Due: {e.dueDate}{e.dueDate === 1 ? 'st' : e.dueDate === 2 ? 'nd' : e.dueDate === 3 ? 'rd' : 'th'}</span>
-                        {e.paid && <span className="text-xs text-emerald-400 ml-2">Paid</span>}
-                      </div>
-                      <span className="text-red-400 font-medium">{fmt(e.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Import Button */}
             <div className="flex gap-2 justify-end pt-2">
               <button onClick={() => { reset(); onClose() }} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-medium transition-colors">Cancel</button>
-              <button onClick={handleImport}
-                className="px-5 py-2 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-sm font-semibold transition-colors">
-                Import All to {monthLabel(currentMonth)}
+              <button onClick={handleJsonImport} disabled={!jsonParsed}
+                className="px-5 py-2 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                Import {jsonParsed?.totalMonths || 0} Month{jsonParsed?.totalMonths !== 1 ? 's' : ''}
               </button>
             </div>
           </div>
@@ -1268,7 +1305,8 @@ export default function App() {
   const [data, setData] = useState(migrationInfo.data)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [currentMonth, setCurrentMonth] = useState(getMonthKey(new Date()))
-  const [showExcelImport, setShowExcelImport] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
   const { toasts, toast, removeToast } = useToast()
 
   const monthData = getMonthData(data, currentMonth)
@@ -1354,6 +1392,26 @@ export default function App() {
     toast(`Excel imported: ${counts.join(', ')} into ${monthLabel(dailyMonth)}`)
   }
 
+  function handleJsonImport(jsonData) {
+    setData(prev => {
+      const updated = {}
+      for (const key of Object.keys(prev)) {
+        updated[key] = { ...prev[key] }
+      }
+      for (const [mk, monthVal] of Object.entries(jsonData)) {
+        updated[mk] = {
+          members: (monthVal.members || []).map(m => ({ ...m, id: m.id || genId() })),
+          fixedExpenses: (monthVal.fixedExpenses || []).map(e => ({ ...e, id: e.id || genId() })),
+          dailyExpenses: (monthVal.dailyExpenses || []).map(e => ({ ...e, id: e.id || genId() }))
+        }
+      }
+      return updated
+    })
+    const months = Object.keys(jsonData).sort()
+    if (months.length > 0) setCurrentMonth(months[0])
+    toast(`JSON imported: ${months.length} month(s) — ${months.map(m => monthLabel(m)).join(', ')}`)
+  }
+
   function changeMonth(delta) {
     const d = parseMonthKey(currentMonth)
     d.setMonth(d.getMonth() + delta)
@@ -1378,10 +1436,11 @@ export default function App() {
   return (
     <div className="min-h-screen pb-24 md:pb-8">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      <ExcelImportModal
-        open={showExcelImport}
-        onClose={() => setShowExcelImport(false)}
+      <ImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
         onImport={handleExcelImport}
+        onJsonImport={handleJsonImport}
         toast={toast}
         currentMonth={currentMonth}
       />
@@ -1408,18 +1467,39 @@ export default function App() {
 
           {/* Actions */}
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowExcelImport(true)} title="Import from Excel"
+            <button onClick={() => setShowImport(true)} title="Import data"
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs font-medium transition-colors">
-              <FileSpreadsheet className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Excel</span>
+              <Upload className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Import</span>
             </button>
             <button onClick={carryOverFixed} title="Carry over fixed expenses from last month"
               className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-navy-800 hover:bg-navy-700 text-xs font-medium text-slate-300 transition-colors">
               <Copy className="w-3.5 h-3.5" /> Carry Over
             </button>
-            <button onClick={() => { exportToCSV(monthData, currentMonth); toast('CSV exported!') }} title="Export to CSV"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gold-500/20 hover:bg-gold-500/30 text-gold-400 text-xs font-medium transition-colors">
-              <Download className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Export</span>
-            </button>
+            <div className="relative">
+              <button onClick={() => setShowExportMenu(p => !p)} title="Export data"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gold-500/20 hover:bg-gold-500/30 text-gold-400 text-xs font-medium transition-colors">
+                <Download className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Export</span>
+              </button>
+              {showExportMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-navy-800 border border-navy-700/50 rounded-xl shadow-2xl py-1.5 min-w-[160px] animate-slide-in">
+                    <button onClick={() => { exportToCSV(monthData, currentMonth); toast('CSV exported!'); setShowExportMenu(false) }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-300 hover:bg-navy-700/50 hover:text-white transition-colors">
+                      <FileText className="w-4 h-4 text-gold-400" /> CSV
+                    </button>
+                    <button onClick={() => { exportToExcel(monthData, currentMonth); toast('Excel exported!'); setShowExportMenu(false) }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-300 hover:bg-navy-700/50 hover:text-white transition-colors">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Excel
+                    </button>
+                    <button onClick={() => { exportToJSON(data, currentMonth); toast('JSON exported!'); setShowExportMenu(false) }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-300 hover:bg-navy-700/50 hover:text-white transition-colors">
+                      <span className="w-4 h-4 text-blue-400 font-mono text-[10px] flex items-center justify-center">{ }</span> JSON
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
