@@ -7,7 +7,8 @@ import {
   IndianRupee, Users, Calendar, CreditCard, ShoppingCart, TrendingUp,
   Home, LayoutDashboard, Wallet, Copy, AlertTriangle, ChevronLeft,
   ChevronRight as ChevronRightIcon, Coffee, Car, Heart, Film, Zap,
-  MoreHorizontal, Search, Bell, CircleDot, Upload, FileText, FileSpreadsheet
+  MoreHorizontal, Search, Bell, CircleDot, Upload, FileText, FileSpreadsheet,
+  Menu, Database, HardDrive
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
@@ -31,6 +32,18 @@ function monthLabel(k) { return parseMonthKey(k).toLocaleDateString('en-IN', { m
 function dayLabel(d) { return new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) }
 
 
+
+function getStorageUsage() {
+  let used = 0
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      used += (key.length + localStorage.getItem(key).length) * 2
+    }
+  } catch { /* ignore */ }
+  const limitBytes = 5 * 1024 * 1024
+  return { usedBytes: used, limitBytes, usedMB: (used / (1024 * 1024)).toFixed(2), limitMB: 5, percent: Math.min(100, (used / limitBytes) * 100) }
+}
 
 function loadData() {
   try { return JSON.parse(localStorage.getItem('financeData')) || {} } catch { return {} }
@@ -1307,11 +1320,13 @@ export default function App() {
   const [currentMonth, setCurrentMonth] = useState(getMonthKey(new Date()))
   const [showImport, setShowImport] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const { toasts, toast, removeToast } = useToast()
+  const [storageInfo, setStorageInfo] = useState(() => getStorageUsage())
 
   const monthData = getMonthData(data, currentMonth)
 
-  useEffect(() => { saveData(data) }, [data])
+  useEffect(() => { saveData(data); setStorageInfo(getStorageUsage()) }, [data])
   useEffect(() => {
     if (migrationInfo.moved > 0) toast(`Auto-fixed ${migrationInfo.moved} expense(s) moved to correct month`)
   }, [])
@@ -1445,16 +1460,90 @@ export default function App() {
         currentMonth={currentMonth}
       />
 
+      {/* Sidebar */}
+      <div className={`fixed inset-0 z-50 transition-opacity duration-300 ${sidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
+        <aside className={`absolute top-0 left-0 h-full w-72 bg-navy-900 border-r border-navy-700/40 shadow-2xl flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          {/* Sidebar Header */}
+          <div className="p-5 border-b border-navy-700/30 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-gradient-to-br from-gold-400 to-gold-600 rounded-xl flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-navy-950" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white leading-tight">Finance Tracker</h2>
+                <p className="text-[10px] text-slate-500">Personal money manager</p>
+              </div>
+            </div>
+            <button onClick={() => setSidebarOpen(false)} className="w-8 h-8 rounded-lg bg-navy-800 hover:bg-navy-700 flex items-center justify-center transition-colors">
+              <X className="w-4 h-4 text-slate-400" />
+            </button>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 overflow-y-auto py-3 px-3">
+            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Navigation</p>
+            {TABS.map(tab => (
+              <button key={tab.id} onClick={() => { setActiveTab(tab.id); setSidebarOpen(false) }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${activeTab === tab.id ? 'bg-gold-500/15 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+                <tab.icon className="w-4.5 h-4.5" /> {tab.label}
+              </button>
+            ))}
+
+            <div className="my-3 border-t border-navy-700/30" />
+            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Actions</p>
+
+            <button onClick={() => { setShowImport(true); setSidebarOpen(false) }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-emerald-400 hover:bg-emerald-500/10 transition-colors mb-0.5">
+              <Upload className="w-4.5 h-4.5" /> Import Data
+            </button>
+            <button onClick={() => { exportToCSV(monthData, currentMonth); toast('CSV exported!'); setSidebarOpen(false) }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
+              <FileText className="w-4.5 h-4.5 text-gold-400" /> Export CSV
+            </button>
+            <button onClick={() => { exportToExcel(monthData, currentMonth); toast('Excel exported!'); setSidebarOpen(false) }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
+              <FileSpreadsheet className="w-4.5 h-4.5 text-emerald-400" /> Export Excel
+            </button>
+            <button onClick={() => { exportToJSON(data, currentMonth); toast('JSON exported!'); setSidebarOpen(false) }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
+              <Database className="w-4.5 h-4.5 text-blue-400" /> Export JSON
+            </button>
+            <button onClick={() => { carryOverFixed(); setSidebarOpen(false) }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
+              <Copy className="w-4.5 h-4.5" /> Carry Over Fixed
+            </button>
+          </nav>
+
+          {/* Storage Usage - Bottom */}
+          <div className="p-4 border-t border-navy-700/30 bg-navy-950/50">
+            <div className="flex items-center gap-2 mb-2">
+              <HardDrive className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-xs font-medium text-slate-400">Local Storage</span>
+            </div>
+            <div className="h-2 bg-navy-800 rounded-full overflow-hidden mb-1.5">
+              <div className={`h-full rounded-full transition-all duration-500 ${storageInfo.percent > 90 ? 'bg-red-500' : storageInfo.percent > 70 ? 'bg-gold-500' : 'bg-emerald-500'}`}
+                style={{ width: `${storageInfo.percent}%` }} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-500">{storageInfo.usedMB} MB used</span>
+              <span className="text-[10px] text-slate-500">{(storageInfo.limitMB - parseFloat(storageInfo.usedMB)).toFixed(2)} MB free</span>
+            </div>
+            <p className="text-[10px] text-slate-600 mt-0.5">{storageInfo.percent.toFixed(1)}% of {storageInfo.limitMB} MB</p>
+          </div>
+        </aside>
+      </div>
+
       {/* Header */}
       <header className="sticky top-0 z-30 bg-navy-950/80 backdrop-blur-xl border-b border-navy-700/30">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-gold-400 to-gold-600 rounded-xl flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-navy-950" />
-            </div>
-            <div>
+            <button onClick={() => setSidebarOpen(true)} className="w-9 h-9 rounded-xl bg-navy-800 hover:bg-navy-700 flex items-center justify-center transition-colors" title="Open menu">
+              <Menu className="w-5 h-5 text-slate-300" />
+            </button>
+            <div className="hidden sm:block">
               <h1 className="text-lg font-bold text-white leading-tight">Finance Tracker</h1>
-              <p className="text-xs text-slate-500 hidden sm:block">Personal money manager</p>
+              <p className="text-xs text-slate-500">Personal money manager</p>
             </div>
           </div>
 
@@ -1470,10 +1559,6 @@ export default function App() {
             <button onClick={() => setShowImport(true)} title="Import data"
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs font-medium transition-colors">
               <Upload className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Import</span>
-            </button>
-            <button onClick={carryOverFixed} title="Carry over fixed expenses from last month"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-navy-800 hover:bg-navy-700 text-xs font-medium text-slate-300 transition-colors">
-              <Copy className="w-3.5 h-3.5" /> Carry Over
             </button>
             <div className="relative">
               <button onClick={() => setShowExportMenu(p => !p)} title="Export data"
@@ -1494,7 +1579,7 @@ export default function App() {
                     </button>
                     <button onClick={() => { exportToJSON(data, currentMonth); toast('JSON exported!'); setShowExportMenu(false) }}
                       className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-300 hover:bg-navy-700/50 hover:text-white transition-colors">
-                      <span className="w-4 h-4 text-blue-400 font-mono text-[10px] flex items-center justify-center">{ }</span> JSON
+                      <Database className="w-4 h-4 text-blue-400" /> JSON
                     </button>
                   </div>
                 </>
