@@ -443,31 +443,48 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [filter, setFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [expanded, setExpanded] = useState({})
   const today = new Date().toISOString().slice(0, 10)
-  const [form, setForm] = useState({ title: '', description: '', amount: '', category: CATEGORIES[0], date: today, paymentMethod: PAYMENT_METHODS[1] })
+  const [form, setForm] = useState({ title: '', description: '', amount: '', category: CATEGORIES[0], date: today, paymentMethod: PAYMENT_METHODS[1], subItems: [] })
+  const [subName, setSubName] = useState('')
+  const [subAmount, setSubAmount] = useState('')
 
   function resetForm() {
     setShowForm(false); setEditId(null)
-    setForm({ title: '', description: '', amount: '', category: CATEGORIES[0], date: today, paymentMethod: PAYMENT_METHODS[1] })
+    setForm({ title: '', description: '', amount: '', category: CATEGORIES[0], date: today, paymentMethod: PAYMENT_METHODS[1], subItems: [] })
+    setSubName(''); setSubAmount('')
   }
 
   function startEdit(e) {
     setEditId(e.id)
-    setForm({ title: e.title, description: e.description || '', amount: e.amount, category: e.category, date: e.date, paymentMethod: e.paymentMethod })
+    setForm({ title: e.title, description: e.description || '', amount: e.amount, category: e.category, date: e.date, paymentMethod: e.paymentMethod, subItems: [...(e.subItems || [])] })
     setShowForm(true)
   }
 
+  function addSubItem() {
+    if (!subName.trim() || !subAmount) return
+    setForm(f => ({ ...f, subItems: [...f.subItems, { id: genId(), name: subName.trim(), amount: Number(subAmount) }] }))
+    setSubName(''); setSubAmount('')
+  }
+
+  const hasSubItems = form.subItems.length > 0
+  const subTotal = form.subItems.reduce((s, i) => s + Number(i.amount), 0)
+  const effectiveAmount = hasSubItems ? subTotal : Number(form.amount)
+
   function handleSubmit(ev) {
     ev.preventDefault()
-    if (!form.title.trim() || !form.amount) return toast('Please fill title and amount', 'error')
+    if (!form.title.trim()) return toast('Please fill the title', 'error')
+    if (!hasSubItems && !form.amount) return toast('Please fill the amount or add sub-items', 'error')
+    if (hasSubItems && subTotal <= 0) return toast('Sub-items total must be greater than zero', 'error')
     const entry = {
       id: editId || genId(),
       title: form.title.trim(),
       description: form.description.trim(),
-      amount: Number(form.amount),
+      amount: effectiveAmount,
       category: form.category,
       date: form.date,
-      paymentMethod: form.paymentMethod
+      paymentMethod: form.paymentMethod,
+      subItems: form.subItems
     }
     if (editId) {
       const dateMonth = entry.date.slice(0, 7)
@@ -556,24 +573,49 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
           </div>
           {items.map(e => {
             const CatIcon = CATEGORY_ICONS[e.category] || MoreHorizontal
+            const hasSubItems = e.subItems && e.subItems.length > 0
+            const isExpanded = expanded[e.id]
             return (
-              <div key={e.id} className="bg-navy-950/50 border border-navy-700/30 rounded-xl p-4 flex items-center gap-3 group hover:border-gold-500/20 transition-colors">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: CATEGORY_COLORS[e.category] + '20' }}>
-                  <CatIcon className="w-5 h-5" style={{ color: CATEGORY_COLORS[e.category] }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-white truncate">{e.title}</p>
-                  <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                    <span className="px-1.5 py-0.5 rounded bg-navy-800 text-slate-400">{e.category}</span>
-                    <span>{e.paymentMethod}</span>
-                    {e.description && <span>· {e.description}</span>}
+              <div key={e.id} className="bg-navy-950/50 border border-navy-700/30 rounded-xl overflow-hidden group hover:border-gold-500/20 transition-colors">
+                <div className="p-4 flex items-center gap-3">
+                  {hasSubItems && (
+                    <button onClick={() => setExpanded(p => ({ ...p, [e.id]: !p[e.id] }))} className="flex-shrink-0 text-slate-400 hover:text-white transition-colors">
+                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </button>
+                  )}
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: CATEGORY_COLORS[e.category] + '20' }}>
+                    <CatIcon className="w-5 h-5" style={{ color: CATEGORY_COLORS[e.category] }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-white truncate">{e.title}</p>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                      <span className="px-1.5 py-0.5 rounded bg-navy-800 text-slate-400">{e.category}</span>
+                      <span>{e.paymentMethod}</span>
+                      {hasSubItems && <span className="text-gold-400">{e.subItems.length} items</span>}
+                      {e.description && <span>· {e.description}</span>}
+                    </div>
+                  </div>
+                  <span className="font-bold text-red-400 flex-shrink-0">{fmt(e.amount)}</span>
+                  <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <button onClick={() => startEdit(e)} className="w-7 h-7 rounded-lg bg-slate-700/50 hover:bg-slate-600 flex items-center justify-center transition-colors"><Edit3 className="w-3 h-3" /></button>
+                    <button onClick={() => setConfirmDelete(e.id)} className="w-7 h-7 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-colors text-red-400"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 </div>
-                <span className="font-bold text-red-400 flex-shrink-0">{fmt(e.amount)}</span>
-                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                  <button onClick={() => startEdit(e)} className="w-7 h-7 rounded-lg bg-slate-700/50 hover:bg-slate-600 flex items-center justify-center transition-colors"><Edit3 className="w-3 h-3" /></button>
-                  <button onClick={() => setConfirmDelete(e.id)} className="w-7 h-7 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-colors text-red-400"><Trash2 className="w-3 h-3" /></button>
-                </div>
+                {isExpanded && hasSubItems && (
+                  <div className="border-t border-navy-700/30 px-4 py-3 space-y-1.5 bg-navy-950/30">
+                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Breakdown</p>
+                    {e.subItems.map(s => (
+                      <div key={s.id} className="flex items-center justify-between text-sm py-1">
+                        <span className="text-slate-300">{s.name}</span>
+                        <span className="text-slate-400 font-medium">{fmt(s.amount)}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between text-sm pt-2 border-t border-navy-700/20 font-semibold">
+                      <span className="text-slate-300">Sub-total</span>
+                      <span className="text-gold-400">{fmt(e.subItems.reduce((s, i) => s + Number(i.amount), 0))}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -582,16 +624,51 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
 
       <Modal open={showForm} onClose={resetForm} title={editId ? 'Edit Expense' : 'Add Daily Expense'}>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input label="Title" placeholder="e.g. Lunch, Petrol" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+          <Input label="Title" placeholder="e.g. Lunch, ICICI Credit Card" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
           <Input label="Description (optional)" placeholder="e.g. Office lunch with team" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Input label="Amount (₹)" type="number" placeholder="e.g. 250" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                Amount (₹) {hasSubItems && <span className="text-gold-400 normal-case">— auto-calculated from sub-items</span>}
+              </label>
+              <input
+                type="number"
+                placeholder="e.g. 250"
+                value={hasSubItems ? subTotal : form.amount}
+                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                disabled={hasSubItems}
+                className={`bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 transition-all text-sm ${hasSubItems ? 'opacity-60 cursor-not-allowed !text-gold-400 font-semibold' : ''}`}
+              />
+            </div>
             <Select label="Category" options={CATEGORIES} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Input label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
             <Select label="Payment Method" options={PAYMENT_METHODS} value={form.paymentMethod} onChange={e => setForm(f => ({ ...f, paymentMethod: e.target.value }))} />
           </div>
+
+          <div className="border border-navy-700/30 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-medium text-slate-300">Sub-items (e.g. Credit Card breakdown)</p>
+            {form.subItems.map((s, i) => (
+              <div key={s.id} className="flex items-center gap-2 text-sm">
+                <span className="text-slate-300 flex-1">{s.name}</span>
+                <span className="text-slate-400">{fmt(s.amount)}</span>
+                <button type="button" onClick={() => setForm(f => ({ ...f, subItems: f.subItems.filter((_, idx) => idx !== i) }))} className="text-red-400 hover:text-red-300"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <input placeholder="Item name" value={subName} onChange={e => setSubName(e.target.value)} className="flex-1 bg-navy-950/50 border border-navy-700/50 rounded-lg px-3 py-2 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-gold-500/50" />
+              <input type="number" placeholder="₹" value={subAmount} onChange={e => setSubAmount(e.target.value)} className="w-24 bg-navy-950/50 border border-navy-700/50 rounded-lg px-3 py-2 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-gold-500/50" />
+              <button type="button" onClick={addSubItem} className="px-3 py-2 bg-gold-500/20 hover:bg-gold-500/30 text-gold-400 rounded-lg text-sm font-medium transition-colors"><Plus className="w-4 h-4" /></button>
+            </div>
+            {hasSubItems && (
+              <div className="flex items-center justify-between text-sm pt-2 border-t border-navy-700/20">
+                <span className="text-slate-400">Total Amount</span>
+                <span className="text-gold-400 font-semibold">{fmt(subTotal)}</span>
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2 justify-end pt-2">
             <button type="button" onClick={resetForm} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-medium transition-colors">Cancel</button>
             <button type="submit" className="px-4 py-2 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-sm font-semibold transition-colors">{editId ? 'Update' : 'Add Expense'}</button>
@@ -759,9 +836,10 @@ function exportToCSV(monthData, monthKey) {
   })
   csv += `Total Fixed,,${totalFixed},,\n\n`
 
-  csv += '=== DAILY EXPENSES ===\nDate,Title,Description,Category,Amount,Payment Method\n'
+  csv += '=== DAILY EXPENSES ===\nDate,Title,Description,Category,Amount,Payment Method,Sub-items\n'
   dailyExpenses.sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
-    csv += `${e.date},"${e.title}","${e.description || ''}",${e.category},${e.amount},${e.paymentMethod}\n`
+    const subs = (e.subItems || []).map(s => `${s.name}: ₹${s.amount}`).join('; ')
+    csv += `${e.date},"${e.title}","${e.description || ''}",${e.category},${e.amount},${e.paymentMethod},"${subs}"\n`
   })
   csv += `Total Daily,,,,${totalDaily},\n\n`
 
@@ -789,7 +867,10 @@ function exportToExcel(monthData, monthKey) {
   while (sheetData.length < 3) sheetData.push([])
 
   const sortedDaily = [...dailyExpenses].sort((a, b) => a.date.localeCompare(b.date))
-  sortedDaily.forEach(e => { sheetData.push([e.title, e.amount]) })
+  sortedDaily.forEach(e => {
+    const subs = (e.subItems || []).map(s => `${s.name}: ${s.amount}`).join('; ')
+    sheetData.push([e.title, e.amount, subs])
+  })
   while (sheetData.length < 6) sheetData.push([])
 
   for (let r = 6; r < Math.max(6, 6 + fixedExpenses.length); r++) {
@@ -832,7 +913,7 @@ function downloadSampleExcel() {
   data[3] = ['Colaba Lunch', 1024]
   data[4] = ['Petrol', 300]
   data[5] = ['Eggs', 200]
-  data[6] = ['Groceries', 1500, '', '', '', '', '', 'Rent', 23000, 5, '', '', 'Yes']
+  data[6] = ['ICICI Credit Card', 11482, 'Amazon: 4163; Speaker: 419; PUC: 125; Recharge: 889', '', '', '', '', 'Rent', 23000, 5, '', '', 'Yes']
   data[7] = ['Shobha', 1000, '', '', '', '', '', 'Car Loan', 8213, 9, '', '', 'No']
   data[8] = ['CNG', 540, '', '', '', '', '', 'HDFC Credit Card', 10335, 12, '', 'Amazon: 4163; Speaker: 419', 'No']
   data[9] = ['', '', '', '', '', '', '', 'Insurance', 3869, 4, '', '', 'Yes']
@@ -858,9 +939,10 @@ function downloadSampleJSON() {
         { name: 'HDFC Credit Card', amount: 10335, dueDate: 12, description: '', subItems: [{ name: 'Amazon', amount: 4163 }, { name: 'Speaker', amount: 419 }], paid: false }
       ],
       dailyExpenses: [
-        { title: 'Colaba Lunch', description: '', amount: 1024, category: 'Food', date: `${mk}-08`, paymentMethod: 'UPI' },
-        { title: 'Petrol', description: '', amount: 300, category: 'Transport', date: `${mk}-08`, paymentMethod: 'UPI' },
-        { title: 'Eggs', description: '', amount: 200, category: 'Food', date: `${mk}-08`, paymentMethod: 'Cash' }
+        { title: 'Colaba Lunch', description: '', amount: 1024, category: 'Food', date: `${mk}-08`, paymentMethod: 'UPI', subItems: [] },
+        { title: 'Petrol', description: '', amount: 300, category: 'Transport', date: `${mk}-08`, paymentMethod: 'UPI', subItems: [] },
+        { title: 'ICICI Credit Card', description: '', amount: 11482, category: 'Bills', date: `${mk}-01`, paymentMethod: 'Card', subItems: [{ name: 'Amazon', amount: 4163 }, { name: 'Speaker', amount: 419 }, { name: 'PUC', amount: 125 }, { name: 'Recharge', amount: 889 }] },
+        { title: 'Eggs', description: '', amount: 200, category: 'Food', date: `${mk}-08`, paymentMethod: 'Cash', subItems: [] }
       ]
     }
   }
@@ -905,7 +987,13 @@ function parseExcelSheet(file) {
           const title = cellVal(sheet, 'A', r)
           const amount = cellVal(sheet, 'B', r)
           if (title && amount && Number(amount) > 0) {
-            dailyExpenses.push({ title: String(title).trim(), amount: Number(amount) })
+            const subItemsRaw = String(cellVal(sheet, 'C', r) || '').trim()
+            const subItems = subItemsRaw ? subItemsRaw.split(/[;,]/).map(s => {
+              const match = s.trim().match(/^(.+?)\s*[:\-₹]\s*(\d+)$/)
+              if (match) return { id: genId(), name: match[1].trim(), amount: Number(match[2]) }
+              return s.trim() ? { id: genId(), name: s.trim(), amount: 0 } : null
+            }).filter(Boolean) : []
+            dailyExpenses.push({ title: String(title).trim(), amount: Number(amount), subItems })
           }
         }
 
@@ -1011,7 +1099,8 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
     const fixed = parsed.fixedExpenses.map(e => ({ id: genId(), ...e }))
     const daily = parsed.dailyExpenses.map(e => ({
       id: genId(), title: e.title, description: '', amount: e.amount,
-      category: dailyCategory, date: dailyDate, paymentMethod: dailyPayment
+      category: dailyCategory, date: dailyDate, paymentMethod: dailyPayment,
+      subItems: e.subItems || []
     }))
     onImport({ members, fixedExpenses: fixed, dailyExpenses: daily, dailyDate })
     reset()
@@ -1099,8 +1188,9 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
                 <p className="text-sm font-medium text-slate-300 mb-2">Expected Excel Layout</p>
                 <div className="space-y-1.5 text-xs text-slate-400">
                   <p><span className="text-gold-400 font-medium">Col A-B, Row 1-2:</span> Income members (Name, Salary)</p>
-                  <p><span className="text-gold-400 font-medium">Col A-B, Row 4-50:</span> Daily expenses (Title, Amount)</p>
+                  <p><span className="text-gold-400 font-medium">Col A-C, Row 4-50:</span> Daily expenses (Title, Amount, Sub-items)</p>
                   <p><span className="text-gold-400 font-medium">Col H-M, Row 7-50:</span> Fixed expenses (Name, Amount, Due Date, Description, Sub-items, Paid?)</p>
+                  <p className="text-slate-500 mt-1">Sub-items format: <span className="text-slate-400">Amazon: 4163; Speaker: 419</span> (semicolon-separated)</p>
                 </div>
                 <button onClick={downloadSampleExcel}
                   className="mt-3 flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors">
@@ -1160,11 +1250,26 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
                       <p className="text-xs font-medium text-slate-300">Daily Expenses</p>
                       <p className="text-xs font-semibold text-gold-400">{fmt(totalDaily)}</p>
                     </div>
-                    <div className="max-h-40 overflow-y-auto divide-y divide-navy-700/20">
+                    <div className="max-h-48 overflow-y-auto divide-y divide-navy-700/20">
                       {parsed.dailyExpenses.map((e, i) => (
-                        <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                          <span className="text-slate-300">{e.title}</span>
-                          <span className="text-red-400 font-medium">{fmt(e.amount)}</span>
+                        <div key={i} className="px-4 py-2 text-sm">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-300">{e.title}</span>
+                              {e.subItems?.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-500/15 text-gold-400">{e.subItems.length} items</span>}
+                            </div>
+                            <span className="text-red-400 font-medium">{fmt(e.amount)}</span>
+                          </div>
+                          {e.subItems?.length > 0 && (
+                            <div className="mt-1 pl-3 border-l-2 border-navy-700/30 space-y-0.5">
+                              {e.subItems.map((s, j) => (
+                                <div key={j} className="flex items-center justify-between text-xs text-slate-500">
+                                  <span>{s.name}</span>
+                                  <span>{fmt(s.amount)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
