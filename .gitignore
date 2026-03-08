@@ -2,3 +2,6 @@
 /test-data
 /features
 /images
+.env
+.env.local
+.env.*.local
