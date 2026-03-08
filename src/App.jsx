@@ -87,21 +87,26 @@ function useToast() {
 }
 
 // ── Confirm Dialog ────────────────────────────────────────────────────
-function ConfirmDialog({ open, title, message, onConfirm, onCancel }) {
+function ConfirmDialog({ open, title, message, onConfirm, onCancel, confirmLabel = 'Delete', variant = 'danger' }) {
   if (!open) return null
+  const styles = {
+    danger: { iconBg: 'bg-red-500/20', iconColor: 'text-red-400', btnBg: 'bg-red-600 hover:bg-red-500' },
+    warning: { iconBg: 'bg-gold-500/20', iconColor: 'text-gold-400', btnBg: 'bg-gold-500 hover:bg-gold-400 !text-navy-950' },
+  }
+  const s = styles[variant] || styles.danger
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onCancel}>
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-slide-in" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-red-400" />
+          <div className={`w-10 h-10 rounded-full ${s.iconBg} flex items-center justify-center`}>
+            <AlertTriangle className={`w-5 h-5 ${s.iconColor}`} />
           </div>
           <h3 className="text-lg font-semibold text-white">{title}</h3>
         </div>
         <p className="text-slate-400 mb-6">{message}</p>
         <div className="flex gap-3 justify-end">
           <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium transition-colors">Cancel</button>
-          <button onClick={onConfirm} className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors">Delete</button>
+          <button onClick={onConfirm} className={`px-4 py-2 rounded-lg ${s.btnBg} text-white text-sm font-medium transition-colors`}>{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -1429,6 +1434,7 @@ export default function App() {
   const [showImport, setShowImport] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showCarryOverConfirm, setShowCarryOverConfirm] = useState(false)
   const { toasts, toast, removeToast } = useToast()
   const [storageInfo, setStorageInfo] = useState(() => getStorageUsage())
 
@@ -1630,7 +1636,7 @@ export default function App() {
     setCurrentMonth(getMonthKey(d))
   }
 
-  function carryOverFixed() {
+  function requestCarryOver() {
     const prevD = parseMonthKey(currentMonth)
     prevD.setMonth(prevD.getMonth() - 1)
     const prevKey = getMonthKey(prevD)
@@ -1638,16 +1644,34 @@ export default function App() {
     if (prevData.fixedExpenses.length === 0) {
       return toast('No fixed expenses in previous month to carry over', 'error')
     }
+    setShowCarryOverConfirm(true)
+  }
+
+  function confirmCarryOver() {
+    const prevD = parseMonthKey(currentMonth)
+    prevD.setMonth(prevD.getMonth() - 1)
+    const prevKey = getMonthKey(prevD)
+    const prevData = getMonthData(data, prevKey)
     const carried = prevData.fixedExpenses.map(e => ({
       ...e, id: genId(), paid: false
     }))
     updateMonth(currentMonth, 'fixedExpenses', [...monthData.fixedExpenses, ...carried])
     toast(`Carried over ${carried.length} fixed expenses from ${monthLabel(prevKey)}`)
+    setShowCarryOverConfirm(false)
   }
 
   return (
     <div className="min-h-screen pb-24 md:pb-8">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
+      <ConfirmDialog
+        open={showCarryOverConfirm}
+        title="Carry Over Fixed Expenses"
+        message={`Are you sure you want to carry forward ${monthLabel(getMonthKey((() => { const d = parseMonthKey(currentMonth); d.setMonth(d.getMonth() - 1); return d })()))} fixed expenses to ${monthLabel(currentMonth)}? Paid status will be reset.`}
+        confirmLabel="Yes, Carry Over"
+        variant="warning"
+        onConfirm={confirmCarryOver}
+        onCancel={() => setShowCarryOverConfirm(false)}
+      />
       <ImportModal
         open={showImport}
         onClose={() => setShowImport(false)}
@@ -1706,7 +1730,7 @@ export default function App() {
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
               <Database className="w-4.5 h-4.5 text-blue-400" /> Export JSON
             </button>
-            <button onClick={() => { carryOverFixed(); setSidebarOpen(false) }}
+            <button onClick={() => { requestCarryOver(); setSidebarOpen(false) }}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
               <Copy className="w-4.5 h-4.5" /> Carry Over Fixed
             </button>
