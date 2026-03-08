@@ -1777,22 +1777,24 @@ export default function App() {
             )}
           </div>
 
-          {/* Storage Usage - Bottom */}
-          <div className="p-4 border-t border-navy-700/30 bg-navy-950/50">
-            <div className="flex items-center gap-2 mb-2">
-              <HardDrive className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-xs font-medium text-slate-400">Local Storage</span>
+          {/* Storage Usage - only shown when not signed in (cloud storage handles persistence) */}
+          {!user && (
+            <div className="p-4 border-t border-navy-700/30 bg-navy-950/50">
+              <div className="flex items-center gap-2 mb-2">
+                <HardDrive className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-xs font-medium text-slate-400">Local Storage</span>
+              </div>
+              <div className="h-2 bg-navy-800 rounded-full overflow-hidden mb-1.5">
+                <div className={`h-full rounded-full transition-all duration-500 ${storageInfo.percent > 90 ? 'bg-red-500' : storageInfo.percent > 70 ? 'bg-gold-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${storageInfo.percent}%` }} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">{storageInfo.usedMB} MB used</span>
+                <span className="text-[10px] text-slate-500">{(storageInfo.limitMB - parseFloat(storageInfo.usedMB)).toFixed(2)} MB free</span>
+              </div>
+              <p className="text-[10px] text-slate-600 mt-0.5">{storageInfo.percent.toFixed(1)}% of {storageInfo.limitMB} MB</p>
             </div>
-            <div className="h-2 bg-navy-800 rounded-full overflow-hidden mb-1.5">
-              <div className={`h-full rounded-full transition-all duration-500 ${storageInfo.percent > 90 ? 'bg-red-500' : storageInfo.percent > 70 ? 'bg-gold-500' : 'bg-emerald-500'}`}
-                style={{ width: `${storageInfo.percent}%` }} />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-500">{storageInfo.usedMB} MB used</span>
-              <span className="text-[10px] text-slate-500">{(storageInfo.limitMB - parseFloat(storageInfo.usedMB)).toFixed(2)} MB free</span>
-            </div>
-            <p className="text-[10px] text-slate-600 mt-0.5">{storageInfo.percent.toFixed(1)}% of {storageInfo.limitMB} MB</p>
-          </div>
+          )}
         </aside>
       </div>
 
