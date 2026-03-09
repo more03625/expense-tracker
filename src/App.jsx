@@ -542,7 +542,7 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
       )}
 
       <div className="space-y-2">
-        {expenses.map(e => {
+        {[...expenses].sort((a, b) => (a.paid === b.paid ? a.dueDate - b.dueDate : a.paid ? 1 : -1)).map(e => {
           const isExpanded = expanded[e.id]
           const hasSubItems = e.subItems && e.subItems.length > 0
           return (
