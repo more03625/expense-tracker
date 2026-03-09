@@ -54,6 +54,16 @@ function getMonthKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).
 function parseMonthKey(k) { const [y, m] = k.split('-'); return new Date(parseInt(y), parseInt(m) - 1) }
 function monthLabel(k) { return parseMonthKey(k).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) }
 function dayLabel(d) { return new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) }
+function isOverdue(dueDate, monthKey) {
+  const today = new Date()
+  const [y, m] = monthKey.split('-').map(Number)
+  const viewingYear = y, viewingMonth = m - 1
+  const currentYear = today.getFullYear(), currentMonth = today.getMonth()
+  if (viewingYear < currentYear || (viewingYear === currentYear && viewingMonth < currentMonth)) return true
+  if (viewingYear === currentYear && viewingMonth === currentMonth) return today.getDate() > dueDate
+  return false
+}
+function dueSuffix(d) { return d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th' }
 
 
 
@@ -445,7 +455,7 @@ function MembersSection({ members, onUpdate, toast }) {
 // ══════════════════════════════════════════════════════════════════════
 // FIXED SPENDINGS SECTION
 // ══════════════════════════════════════════════════════════════════════
-function FixedExpensesSection({ expenses, onUpdate, toast }) {
+function FixedExpensesSection({ expenses, onUpdate, toast, monthKey }) {
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
   const [expanded, setExpanded] = useState({})
@@ -523,11 +533,17 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2"><CreditCard className="w-5 h-5 text-gold-400" /> Fixed Spendings</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Total: <span className="text-red-400 font-semibold">{fmt(total)}</span>
-            {' · '}Paid: <span className="text-emerald-400 font-semibold">{fmt(paidTotal)}</span>
-            {' · '}Pending: <span className="text-gold-400 font-semibold">{fmt(total - paidTotal)}</span>
-          </p>
+          {(() => {
+            const overdueCount = expenses.filter(e => !e.paid && isOverdue(e.dueDate, monthKey)).length
+            return (
+              <p className="text-sm text-slate-400 mt-1">
+                Total: <span className="text-red-400 font-semibold">{fmt(total)}</span>
+                {' · '}Paid: <span className="text-emerald-400 font-semibold">{fmt(paidTotal)}</span>
+                {' · '}Pending: <span className="text-gold-400 font-semibold">{fmt(total - paidTotal)}</span>
+                {overdueCount > 0 && <>{' · '}<span className="text-red-400 font-semibold">{overdueCount} Overdue</span></>}
+              </p>
+            )
+          })()}
         </div>
         <button onClick={() => { resetForm(); setShowForm(true) }} className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 text-navy-950 rounded-xl font-semibold text-sm transition-colors">
           <Plus className="w-4 h-4" /> Add Expense
@@ -542,11 +558,18 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
       )}
 
       <div className="space-y-2">
-        {[...expenses].sort((a, b) => (a.paid === b.paid ? a.dueDate - b.dueDate : a.paid ? 1 : -1)).map(e => {
+        {[...expenses].sort((a, b) => {
+          if (a.paid !== b.paid) return a.paid ? 1 : -1
+          const aOverdue = !a.paid && isOverdue(a.dueDate, monthKey)
+          const bOverdue = !b.paid && isOverdue(b.dueDate, monthKey)
+          if (aOverdue !== bOverdue) return aOverdue ? -1 : 1
+          return a.dueDate - b.dueDate
+        }).map(e => {
           const isExpanded = expanded[e.id]
           const hasSubItems = e.subItems && e.subItems.length > 0
+          const overdue = !e.paid && isOverdue(e.dueDate, monthKey)
           return (
-            <div key={e.id} className={`border rounded-xl overflow-hidden transition-all animate-fade-in ${e.paid ? 'bg-emerald-950/20 border-emerald-500/20' : 'bg-navy-950/50 border-navy-700/30'}`}>
+            <div key={e.id} className={`border rounded-xl overflow-hidden transition-all animate-fade-in ${e.paid ? 'bg-emerald-950/20 border-emerald-500/20' : overdue ? 'bg-red-950/20 border-red-500/30' : 'bg-navy-950/50 border-navy-700/30'}`}>
               <div className="flex items-center gap-3 p-4">
                 <button onClick={() => togglePaid(e.id)}
                   className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all ${e.paid ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600 hover:border-gold-500'}`}>
@@ -562,7 +585,8 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className={`font-semibold ${e.paid ? 'line-through text-slate-400' : 'text-white'}`}>{e.name}</p>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-navy-800 text-slate-400">Due: {e.dueDate}{e.dueDate === 1 ? 'st' : e.dueDate === 2 ? 'nd' : e.dueDate === 3 ? 'rd' : 'th'}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${overdue ? 'bg-red-500/20 text-red-400' : 'bg-navy-800 text-slate-400'}`}>Due: {e.dueDate}{dueSuffix(e.dueDate)}</span>
+                    {overdue && <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-semibold flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Overdue</span>}
                   </div>
                   {e.description && <p className="text-xs text-slate-500 mt-0.5">{e.description}</p>}
                 </div>
@@ -988,9 +1012,11 @@ function DashboardSection({ monthData, monthKey, categories }) {
       <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm font-medium text-slate-300">Fixed Expenses Status</p>
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-4 text-xs flex-wrap">
             <span className="text-emerald-400">Paid: {fmt(paidFixed)}</span>
             <span className="text-red-400">Pending: {fmt(pendingFixed)}</span>
+            {fixedExpenses.filter(e => !e.paid && isOverdue(e.dueDate, monthKey)).length > 0 &&
+              <span className="text-red-400 font-semibold flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{fixedExpenses.filter(e => !e.paid && isOverdue(e.dueDate, monthKey)).length} Overdue</span>}
           </div>
         </div>
         <div className="w-full bg-navy-800 rounded-full h-2.5 overflow-hidden mb-4">
@@ -1002,16 +1028,21 @@ function DashboardSection({ monthData, monthKey, categories }) {
           <div>
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Upcoming / Unpaid Bills</p>
             <div className="space-y-2">
-              {upcomingBills.map(b => (
-                <div key={b.id} className="flex items-center justify-between text-sm py-1.5">
-                  <div className="flex items-center gap-2">
-                    <Bell className="w-3.5 h-3.5 text-gold-400" />
-                    <span className="text-slate-300">{b.name}</span>
-                    <span className="text-xs text-slate-500">Due: {b.dueDate}{b.dueDate === 1 ? 'st' : b.dueDate === 2 ? 'nd' : b.dueDate === 3 ? 'rd' : 'th'}</span>
+              {upcomingBills.map(b => {
+                const overdue = isOverdue(b.dueDate, monthKey)
+                return (
+                  <div key={b.id} className={`flex items-center justify-between text-sm py-1.5 px-2 rounded-lg ${overdue ? 'bg-red-500/10' : ''}`}>
+                    <div className="flex items-center gap-2">
+                      {overdue ? <AlertTriangle className="w-3.5 h-3.5 text-red-400" /> : <Bell className="w-3.5 h-3.5 text-gold-400" />}
+                      <span className="text-slate-300">{b.name}</span>
+                      <span className={`text-xs ${overdue ? 'text-red-400 font-semibold' : 'text-slate-500'}`}>
+                        {overdue ? 'Overdue' : `Due: ${b.dueDate}${dueSuffix(b.dueDate)}`}
+                      </span>
+                    </div>
+                    <span className="font-medium text-red-400">{fmt(b.amount)}</span>
                   </div>
-                  <span className="font-medium text-red-400">{fmt(b.amount)}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -1494,7 +1525,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
                         <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
                           <div>
                             <span className="text-slate-300">{e.name}</span>
-                            <span className="text-xs text-slate-500 ml-2">Due: {e.dueDate}{e.dueDate === 1 ? 'st' : e.dueDate === 2 ? 'nd' : e.dueDate === 3 ? 'rd' : 'th'}</span>
+                            <span className="text-xs text-slate-500 ml-2">Due: {e.dueDate}{dueSuffix(e.dueDate)}</span>
                             {e.paid && <span className="text-xs text-emerald-400 ml-2">Paid</span>}
                           </div>
                           <span className="text-red-400 font-medium">{fmt(e.amount)}</span>
@@ -2275,7 +2306,7 @@ export default function App() {
       <main className="max-w-5xl mx-auto px-4 py-6">
         {activeTab === 'dashboard' && <DashboardSection monthData={monthData} monthKey={currentMonth} categories={categories} />}
         {activeTab === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
-        {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} />}
+        {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} monthKey={currentMonth} />}
         {activeTab === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} categories={categories} onAddCategory={addCategory} />}
         {activeTab === 'privacy' && <PrivacyPolicyPage />}
         {activeTab === 'about' && <AboutPage />}
