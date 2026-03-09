@@ -878,7 +878,7 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
         </form>
       </Modal>
 
-      <AddCategoryModal open={showAddCategory} onClose={() => setShowAddCategory(false)} onSave={onAddCategory} />
+      <AddCategoryModal open={showAddCategory} onClose={() => setShowAddCategory(false)} onSave={cat => { onAddCategory(cat); setForm(f => ({ ...f, category: cat.name })) }} />
 
     </div>
   )
