@@ -16,17 +16,37 @@ import { auth, googleProvider, db } from './firebase'
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 import { doc, setDoc, onSnapshot } from 'firebase/firestore'
 
-const CATEGORIES = ['Food', 'Transport', 'Shopping', 'Health', 'Entertainment', 'Bills', 'Other']
+const DEFAULT_CATEGORIES = [
+  { id: 'food', name: 'Food', color: '#f59e0b', emoji: null, icon: Coffee, builtIn: true },
+  { id: 'transport', name: 'Transport', color: '#3b82f6', emoji: null, icon: Car, builtIn: true },
+  { id: 'shopping', name: 'Shopping', color: '#ec4899', emoji: null, icon: ShoppingCart, builtIn: true },
+  { id: 'health', name: 'Health', color: '#10b981', emoji: null, icon: Heart, builtIn: true },
+  { id: 'entertainment', name: 'Entertainment', color: '#8b5cf6', emoji: null, icon: Film, builtIn: true },
+  { id: 'bills', name: 'Bills', color: '#ef4444', emoji: null, icon: Zap, builtIn: true },
+  { id: 'other', name: 'Other', color: '#6b7280', emoji: null, icon: MoreHorizontal, builtIn: true },
+]
 const PAYMENT_METHODS = ['Cash', 'UPI', 'Card']
-const CATEGORY_COLORS = {
-  Food: '#f59e0b', Transport: '#3b82f6', Shopping: '#ec4899',
-  Health: '#10b981', Entertainment: '#8b5cf6', Bills: '#ef4444', Other: '#6b7280'
+
+function findCategory(categories, nameOrId) {
+  if (!nameOrId) return null
+  const lower = nameOrId.toLowerCase()
+  return categories.find(c => c.id === lower || c.name.toLowerCase() === lower) || null
 }
-const CATEGORY_ICONS = {
-  Food: Coffee, Transport: Car, Shopping: ShoppingCart, Health: Heart,
-  Entertainment: Film, Bills: Zap, Other: MoreHorizontal
+
+function getCatColor(categories, nameOrId) {
+  return findCategory(categories, nameOrId)?.color || '#6b7280'
 }
-const CHART_COLORS = ['#fbbf24', '#3b82f6', '#ec4899', '#10b981', '#8b5cf6', '#ef4444', '#6b7280']
+
+function loadCustomCategories() {
+  try {
+    const raw = localStorage.getItem('customCategories')
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function saveCustomCategories(cats) {
+  localStorage.setItem('customCategories', JSON.stringify(cats))
+}
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7) }
 function fmt(n) { return '₹' + Number(n || 0).toLocaleString('en-IN') }
@@ -147,6 +167,179 @@ function Select({ label, options, ...props }) {
       <select {...props} className="bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 transition-all text-sm">
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
+    </div>
+  )
+}
+
+function CategoryIcon({ category, categories, size = 'w-5 h-5' }) {
+  const cat = findCategory(categories, category)
+  if (!cat) return <MoreHorizontal className={size} style={{ color: '#6b7280' }} />
+  if (cat.emoji) return <span className="text-base leading-none">{cat.emoji}</span>
+  if (cat.icon) { const Icon = cat.icon; return <Icon className={size} style={{ color: cat.color }} /> }
+  return <CircleDot className={size} style={{ color: cat.color }} />
+}
+
+function CategorySelect({ label, categories, value, onChange, onAddNew }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  useEffect(() => { if (open && inputRef.current) inputRef.current.focus() }, [open])
+
+  const filtered = categories.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
+  const selected = findCategory(categories, value)
+
+  return (
+    <div className="flex flex-col gap-1.5" ref={ref}>
+      {label && <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">{label}</label>}
+      <button type="button" onClick={() => { setOpen(!open); setSearch('') }}
+        className="bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-2.5 text-white text-sm text-left flex items-center gap-2 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 transition-all">
+        {selected && (
+          <span className="flex items-center justify-center w-5 h-5 flex-shrink-0">
+            <CategoryIcon category={value} categories={categories} size="w-4 h-4" />
+          </span>
+        )}
+        <span className="flex-1 truncate">{selected?.name || value || 'Select'}</span>
+        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="relative z-50">
+          <div className="absolute top-0 left-0 right-0 bg-navy-900 border border-navy-700/50 rounded-xl shadow-2xl overflow-hidden">
+            <div className="p-2">
+              <input ref={inputRef} type="text" placeholder="Search categories..." value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full bg-navy-950/50 border border-navy-700/30 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-gold-500/50" />
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {filtered.map(c => (
+                <button key={c.id} type="button"
+                  onClick={() => { onChange(c.name); setOpen(false); setSearch('') }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-navy-800 transition-colors ${(selected?.id === c.id) ? 'bg-navy-800 text-gold-400' : 'text-slate-300'}`}>
+                  <span className="flex items-center justify-center w-5 h-5 flex-shrink-0">
+                    <CategoryIcon category={c.name} categories={categories} size="w-4 h-4" />
+                  </span>
+                  <span>{c.name}</span>
+                </button>
+              ))}
+              {search && filtered.length === 0 && (
+                <p className="px-3 py-2 text-xs text-slate-500">No matching categories</p>
+              )}
+            </div>
+            <div className="border-t border-navy-700/30">
+              <button type="button" onClick={() => { setOpen(false); onAddNew() }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gold-400 hover:bg-navy-800 transition-colors font-medium">
+                <Plus className="w-4 h-4" /> New Category
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const COLOR_SWATCHES = [
+  '#f59e0b', '#3b82f6', '#ec4899', '#10b981', '#8b5cf6', '#ef4444',
+  '#6b7280', '#f97316', '#14b8a6', '#a855f7', '#e11d48', '#22c55e',
+]
+
+const EMOJI_OPTIONS = [
+  '🛒', '🏠', '💊', '🎓', '🐕', '🎁', '✈️', '💼', '📱', '🍕',
+  '☕', '🏋️', '🎮', '🎵', '📚', '👕', '💇', '🧹', '🚕', '⛽',
+]
+
+function AddCategoryModal({ open, onClose, onSave }) {
+  const [name, setName] = useState('')
+  const [color, setColor] = useState(COLOR_SWATCHES[0])
+  const [emoji, setEmoji] = useState('')
+  const [emojiInput, setEmojiInput] = useState('')
+
+  function reset() { setName(''); setColor(COLOR_SWATCHES[0]); setEmoji(''); setEmojiInput('') }
+
+  function handleSave() {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    onSave({
+      id: trimmed.toLowerCase().replace(/\s+/g, '-'),
+      name: trimmed,
+      color,
+      emoji: emoji || null,
+      icon: null,
+      builtIn: false,
+    })
+    reset()
+    onClose()
+  }
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { reset(); onClose() }}>
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-slide-in" onClick={e => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-white mb-4">New Category</h3>
+
+        <div className="space-y-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Name</label>
+            <input type="text" placeholder="e.g. Groceries" value={name} onChange={e => setName(e.target.value)}
+              className="bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 transition-all text-sm"
+              autoFocus onKeyDown={e => { if (e.key === 'Enter') handleSave() }} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Color</label>
+            <div className="flex flex-wrap gap-2">
+              {COLOR_SWATCHES.map(c => (
+                <button key={c} type="button" onClick={() => setColor(c)}
+                  className={`w-7 h-7 rounded-lg transition-all ${color === c ? 'ring-2 ring-white ring-offset-2 ring-offset-navy-900 scale-110' : 'hover:scale-105'}`}
+                  style={{ backgroundColor: c }} />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Emoji Icon</label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {EMOJI_OPTIONS.map(e => (
+                <button key={e} type="button" onClick={() => { setEmoji(e); setEmojiInput('') }}
+                  className={`w-8 h-8 rounded-lg text-base flex items-center justify-center transition-all ${emoji === e ? 'bg-navy-700 ring-1 ring-gold-500 scale-110' : 'hover:bg-navy-800'}`}>
+                  {e}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="Or type any emoji" value={emojiInput} maxLength={2}
+                onChange={e => { setEmojiInput(e.target.value); if (e.target.value) setEmoji(e.target.value) }}
+                className="flex-1 bg-navy-950/50 border border-navy-700/50 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-gold-500/50" />
+              {emoji && (
+                <button type="button" onClick={() => { setEmoji(''); setEmojiInput('') }} className="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 p-3 bg-navy-950/30 rounded-xl">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color + '20' }}>
+              {emoji ? <span className="text-lg">{emoji}</span> : <CircleDot className="w-5 h-5" style={{ color }} />}
+            </div>
+            <span className="text-sm font-medium text-white">{name || 'Preview'}</span>
+          </div>
+        </div>
+
+        <div className="flex gap-3 justify-end mt-5">
+          <button onClick={() => { reset(); onClose() }} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium transition-colors">Cancel</button>
+          <button onClick={handleSave} disabled={!name.trim()}
+            className="px-5 py-2 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Add Category
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -443,21 +636,23 @@ function FixedExpensesSection({ expenses, onUpdate, toast }) {
 // ══════════════════════════════════════════════════════════════════════
 // DAILY / VARIABLE EXPENSES SECTION
 // ══════════════════════════════════════════════════════════════════════
-function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthKey }) {
+function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthKey, categories, onAddCategory }) {
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [filter, setFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [expanded, setExpanded] = useState({})
+  const [showAddCategory, setShowAddCategory] = useState(false)
   const today = new Date().toISOString().slice(0, 10)
-  const [form, setForm] = useState({ title: '', description: '', amount: '', category: CATEGORIES[0], date: today, paymentMethod: PAYMENT_METHODS[1], subItems: [] })
+  const defaultCatName = categories[0]?.name || 'Food'
+  const [form, setForm] = useState({ title: '', description: '', amount: '', category: defaultCatName, date: today, paymentMethod: PAYMENT_METHODS[1], subItems: [] })
   const [subName, setSubName] = useState('')
   const [subAmount, setSubAmount] = useState('')
 
   function resetForm() {
     setShowForm(false); setEditId(null)
-    setForm({ title: '', description: '', amount: '', category: CATEGORIES[0], date: today, paymentMethod: PAYMENT_METHODS[1], subItems: [] })
+    setForm({ title: '', description: '', amount: '', category: defaultCatName, date: today, paymentMethod: PAYMENT_METHODS[1], subItems: [] })
     setSubName(''); setSubAmount('')
   }
 
@@ -578,7 +773,7 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
             <p className="text-sm font-semibold text-gold-400">{fmt(items.reduce((s, e) => s + Number(e.amount), 0))}</p>
           </div>
           {items.map(e => {
-            const CatIcon = CATEGORY_ICONS[e.category] || MoreHorizontal
+            const catColor = getCatColor(categories, e.category)
             const hasSubItems = e.subItems && e.subItems.length > 0
             const isExpanded = expanded[e.id]
             return (
@@ -589,8 +784,8 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </button>
                   )}
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: CATEGORY_COLORS[e.category] + '20' }}>
-                    <CatIcon className="w-5 h-5" style={{ color: CATEGORY_COLORS[e.category] }} />
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: catColor + '20' }}>
+                    <CategoryIcon category={e.category} categories={categories} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-white truncate">{e.title}</p>
@@ -646,7 +841,8 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
                 className={`bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 transition-all text-sm ${hasSubItems ? 'opacity-60 cursor-not-allowed !text-gold-400 font-semibold' : ''}`}
               />
             </div>
-            <Select label="Category" options={CATEGORIES} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
+            <CategorySelect label="Category" categories={categories} value={form.category}
+              onChange={val => setForm(f => ({ ...f, category: val }))} onAddNew={() => setShowAddCategory(true)} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Input label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
@@ -682,6 +878,8 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
         </form>
       </Modal>
 
+      <AddCategoryModal open={showAddCategory} onClose={() => setShowAddCategory(false)} onSave={onAddCategory} />
+
     </div>
   )
 }
@@ -689,7 +887,7 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
 // ══════════════════════════════════════════════════════════════════════
 // DASHBOARD SECTION
 // ══════════════════════════════════════════════════════════════════════
-function DashboardSection({ monthData, monthKey }) {
+function DashboardSection({ monthData, monthKey, categories }) {
   const { members = [], fixedExpenses = [], dailyExpenses = [] } = monthData
   const totalIncome = members.reduce((s, m) => s + Number(m.salary), 0)
   const totalFixed = fixedExpenses.reduce((s, e) => s + Number(e.amount), 0)
@@ -757,7 +955,7 @@ function DashboardSection({ monthData, monthKey }) {
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
                 <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={90} paddingAngle={3} strokeWidth={0}>
-                  {pieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                  {pieData.map((entry, i) => <Cell key={i} fill={getCatColor(categories, entry.name)} />)}
                 </Pie>
                 <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '12px', color: '#e2e8f0' }} />
                 <Legend formatter={(v) => <span className="text-slate-300 text-xs">{v}</span>} />
@@ -1054,7 +1252,7 @@ function parseExcelSheet(file) {
   })
 }
 
-function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMonth }) {
+function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMonth, categories, onAddCategory }) {
   const [mode, setMode] = useState('excel')
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
@@ -1062,6 +1260,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
   const [dailyDate, setDailyDate] = useState('')
   const [dailyCategory, setDailyCategory] = useState('Other')
   const [dailyPayment, setDailyPayment] = useState('UPI')
+  const [showAddCategory, setShowAddCategory] = useState(false)
   const [jsonText, setJsonText] = useState('')
   const [jsonParsed, setJsonParsed] = useState(null)
   const [jsonError, setJsonError] = useState('')
@@ -1231,7 +1430,8 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
                     <p className="text-sm font-medium text-slate-300">Daily Expense Defaults</p>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <Input label="Date" type="date" value={dailyDate} onChange={e => setDailyDate(e.target.value)} />
-                      <Select label="Category" options={CATEGORIES} value={dailyCategory} onChange={e => setDailyCategory(e.target.value)} />
+                      <CategorySelect label="Category" categories={categories} value={dailyCategory}
+                        onChange={val => setDailyCategory(val)} onAddNew={() => setShowAddCategory(true)} />
                       <Select label="Payment" options={PAYMENT_METHODS} value={dailyPayment} onChange={e => setDailyPayment(e.target.value)} />
                     </div>
                   </div>
@@ -1381,6 +1581,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
           </div>
         )}
       </div>
+      <AddCategoryModal open={showAddCategory} onClose={() => setShowAddCategory(false)} onSave={cat => { onAddCategory(cat); setDailyCategory(cat.name) }} />
     </div>
   )
 }
@@ -1589,6 +1790,12 @@ export default function App() {
   const { toasts, toast, removeToast } = useToast()
   const [storageInfo, setStorageInfo] = useState(() => getStorageUsage())
 
+  const [categories, setCategories] = useState(() => {
+    const custom = loadCustomCategories()
+    return [...DEFAULT_CATEGORIES, ...custom]
+  })
+  const skipNextCategoryUpdate = useRef(false)
+
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -1618,13 +1825,20 @@ export default function App() {
     firestoreUnsub.current = onSnapshot(docRef, (snap) => {
       if (skipNextFirestoreUpdate.current) { skipNextFirestoreUpdate.current = false; initialCloudLoadDone.current = true; return }
       if (snap.exists()) {
-        const cloudData = snap.data()?.financeData
+        const snapData = snap.data()
+        const cloudData = snapData?.financeData
         if (cloudData && typeof cloudData === 'object') {
           const { data: migrated } = migrateExpensesToCorrectMonths(cloudData)
           setData(migrated)
           saveData(migrated)
           setSyncStatus('synced')
         }
+        if (snapData?.categories && !skipNextCategoryUpdate.current) {
+          const cloudCustom = snapData.categories.filter(c => !c.builtIn)
+          saveCustomCategories(cloudCustom)
+          setCategories([...DEFAULT_CATEGORIES, ...cloudCustom])
+        }
+        skipNextCategoryUpdate.current = false
       }
       initialCloudLoadDone.current = true
     }, () => { setSyncStatus('error'); initialCloudLoadDone.current = true })
@@ -1646,6 +1860,20 @@ export default function App() {
     }
   }, [data, user])
 
+  function addCategory(newCat) {
+    if (findCategory(categories, newCat.id) || findCategory(categories, newCat.name)) return
+    const updated = [...categories, newCat]
+    setCategories(updated)
+    const custom = updated.filter(c => !c.builtIn)
+    saveCustomCategories(custom)
+    if (user) {
+      skipNextCategoryUpdate.current = true
+      const docRef = doc(db, 'users', user.uid)
+      const serializable = updated.map(({ icon, ...rest }) => rest)
+      setDoc(docRef, { categories: serializable }, { merge: true }).catch(() => {})
+    }
+  }
+
   useEffect(() => {
     if (migrationInfo.moved > 0) toast(`Auto-fixed ${migrationInfo.moved} expense(s) moved to correct month`)
   }, [])
@@ -1660,9 +1888,14 @@ export default function App() {
         const md = localData[k]
         return md.members?.length > 0 || md.fixedExpenses?.length > 0 || md.dailyExpenses?.length > 0
       })
-      if (hasLocalData) {
+      const localCustomCats = loadCustomCategories()
+      if (hasLocalData || localCustomCats.length > 0) {
         skipNextFirestoreUpdate.current = true
-        await setDoc(docRef, { financeData: localData }, { merge: true })
+        const payload = { financeData: localData }
+        if (localCustomCats.length > 0) {
+          payload.categories = [...DEFAULT_CATEGORIES, ...localCustomCats].map(({ icon, ...rest }) => rest)
+        }
+        await setDoc(docRef, payload, { merge: true })
         toast(`Signed in as ${result.user.displayName} — local data synced to cloud`)
       } else {
         toast(`Signed in as ${result.user.displayName}`)
@@ -1830,6 +2063,8 @@ export default function App() {
         onJsonImport={handleJsonImport}
         toast={toast}
         currentMonth={currentMonth}
+        categories={categories}
+        onAddCategory={addCategory}
       />
 
       {/* Sidebar */}
@@ -2038,10 +2273,10 @@ export default function App() {
 
       {/* Content */}
       <main className="max-w-5xl mx-auto px-4 py-6">
-        {activeTab === 'dashboard' && <DashboardSection monthData={monthData} monthKey={currentMonth} />}
+        {activeTab === 'dashboard' && <DashboardSection monthData={monthData} monthKey={currentMonth} categories={categories} />}
         {activeTab === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
         {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} />}
-        {activeTab === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} />}
+        {activeTab === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} categories={categories} onAddCategory={addCategory} />}
         {activeTab === 'privacy' && <PrivacyPolicyPage />}
         {activeTab === 'about' && <AboutPage />}
       </main>
