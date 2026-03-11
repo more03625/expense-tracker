@@ -15,6 +15,7 @@ import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 import { doc, setDoc, onSnapshot } from 'firebase/firestore'
+import UPIImportModal from './components/UPIImportModal'
 
 const DEFAULT_CATEGORIES = [
   { id: 'food', name: 'Food', color: '#f59e0b', emoji: null, icon: Coffee, builtIn: true },
@@ -665,6 +666,7 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
   const [editId, setEditId] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [filter, setFilter] = useState('all')
+  const [filterCategory, setFilterCategory] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [expanded, setExpanded] = useState({})
   const [showAddCategory, setShowAddCategory] = useState(false)
@@ -738,8 +740,13 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
 
   let filtered = [...expenses]
   if (filter === 'today') filtered = filtered.filter(e => e.date === today)
+  if (filterCategory !== 'all') filtered = filtered.filter(e => e.category === filterCategory)
   if (searchTerm) filtered = filtered.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase()) || e.category.toLowerCase().includes(searchTerm.toLowerCase()))
   filtered.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+
+  const usedCategoryNames = new Set(expenses.map(e => e.category))
+  const allCategoryNames = categories.map(c => c.name)
+  const filterCategories = [...new Set([...allCategoryNames, ...usedCategoryNames])].sort()
 
   const grouped = {}
   filtered.forEach(e => { if (!grouped[e.date]) grouped[e.date] = []; grouped[e.date].push(e) })
@@ -776,6 +783,13 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
               className={`px-4 py-2 text-sm font-medium transition-colors ${filter === v ? 'bg-gold-500 text-navy-950' : 'text-slate-400 hover:text-white'}`}>{l}</button>
           ))}
         </div>
+        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+          className="bg-navy-950/50 border border-navy-700/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-gold-500/50 min-w-[130px]">
+          <option value="all">All Categories</option>
+          {filterCategories.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input placeholder="Search expenses..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
@@ -821,7 +835,7 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
                     </div>
                   </div>
                   <span className="font-bold text-red-400 flex-shrink-0">{fmt(e.amount)}</span>
-                  <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <div className="flex gap-1.5 flex-shrink-0">
                     <button onClick={() => startEdit(e)} className="w-7 h-7 rounded-lg bg-slate-700/50 hover:bg-slate-600 flex items-center justify-center transition-colors"><Edit3 className="w-3 h-3" /></button>
                     <button onClick={() => setConfirmDelete(e.id)} className="w-7 h-7 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-colors text-red-400"><Trash2 className="w-3 h-3" /></button>
                   </div>
@@ -1283,8 +1297,8 @@ function parseExcelSheet(file) {
   })
 }
 
-function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMonth, categories, onAddCategory }) {
-  const [mode, setMode] = useState('excel')
+function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, toast, currentMonth, categories, onAddCategory }) {
+  const [mode, setMode] = useState('upi')
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -1387,13 +1401,15 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
           <button onClick={() => { reset(); onClose() }} className="w-8 h-8 rounded-lg bg-slate-700/50 hover:bg-slate-600 flex items-center justify-center transition-colors"><X className="w-4 h-4" /></button>
         </div>
 
-        {/* Mode Tabs */}
+        {/* Mode Tabs — excel/json hidden for now, can be re-enabled later */}
+        {false && (
         <div className="flex bg-navy-950/50 border border-navy-700/30 rounded-xl overflow-hidden mb-5">
-          {[['excel', 'Excel File'], ['json', 'JSON Data']].map(([id, label]) => (
+          {[['excel', 'Excel File'], ['json', 'JSON Data'], ['upi', 'UPI Statement']].map(([id, label]) => (
             <button key={id} onClick={() => setMode(id)}
               className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${mode === id ? 'bg-gold-500 text-navy-950' : 'text-slate-400 hover:text-white'}`}>{label}</button>
           ))}
         </div>
+        )}
 
         {/* ── EXCEL MODE ── */}
         {mode === 'excel' && (
@@ -1610,6 +1626,18 @@ function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMont
               </button>
             </div>
           </div>
+        )}
+
+        {/* ── UPI STATEMENT MODE ── */}
+        {mode === 'upi' && (
+          <UPIImportModal
+            onImport={(expenses) => { onUPIImport(expenses); reset(); onClose() }}
+            toast={toast}
+            categories={categories}
+            onAddCategory={onAddCategory}
+            CategorySelect={CategorySelect}
+            AddCategoryModal={AddCategoryModal}
+          />
         )}
       </div>
       <AddCategoryModal open={showAddCategory} onClose={() => setShowAddCategory(false)} onSave={cat => { onAddCategory(cat); setDailyCategory(cat.name) }} />
@@ -2045,6 +2073,14 @@ export default function App() {
     toast(`JSON imported: ${months.length} month(s) — ${months.map(m => monthLabel(m)).join(', ')}`)
   }
 
+  function handleUPIImport(expenses) {
+    if (!expenses || expenses.length === 0) return
+    addDailyExpenses(expenses)
+    const firstMonth = expenses[0].date.slice(0, 7)
+    setCurrentMonth(firstMonth)
+    setActiveTab('daily')
+  }
+
   function changeMonth(delta) {
     const d = parseMonthKey(currentMonth)
     d.setMonth(d.getMonth() + delta)
@@ -2092,6 +2128,7 @@ export default function App() {
         onClose={() => setShowImport(false)}
         onImport={handleExcelImport}
         onJsonImport={handleJsonImport}
+        onUPIImport={handleUPIImport}
         toast={toast}
         currentMonth={currentMonth}
         categories={categories}

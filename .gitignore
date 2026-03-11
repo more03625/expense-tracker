@@ -2,6 +2,8 @@
 /test-data
 /features
 /images
+/bank-statements
+/.cursor
 .env
 .env.local
 .env.*.local
