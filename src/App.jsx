@@ -559,7 +559,6 @@ function FixedExpensesSection({ expenses, onUpdate, toast, monthKey }) {
       )}
 
       <div className="space-y-2">
-<<<<<<< HEAD
         {[...expenses].sort((a, b) => {
           if (a.paid !== b.paid) return a.paid ? 1 : -1
           const aOverdue = !a.paid && isOverdue(a.dueDate, monthKey)
@@ -567,9 +566,6 @@ function FixedExpensesSection({ expenses, onUpdate, toast, monthKey }) {
           if (aOverdue !== bOverdue) return aOverdue ? -1 : 1
           return a.dueDate - b.dueDate
         }).map(e => {
-=======
-        {[...expenses].sort((a, b) => (a.paid === b.paid ? a.dueDate - b.dueDate : a.paid ? 1 : -1)).map(e => {
->>>>>>> main
           const isExpanded = expanded[e.id]
           const hasSubItems = e.subItems && e.subItems.length > 0
           const overdue = !e.paid && isOverdue(e.dueDate, monthKey)
@@ -1301,13 +1297,8 @@ function parseExcelSheet(file) {
   })
 }
 
-<<<<<<< HEAD
 function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, toast, currentMonth, categories, onAddCategory }) {
   const [mode, setMode] = useState('upi')
-=======
-function ImportModal({ open, onClose, onImport, onJsonImport, toast, currentMonth, categories, onAddCategory }) {
-  const [mode, setMode] = useState('excel')
->>>>>>> main
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -2352,7 +2343,7 @@ export default function App() {
       <main className="max-w-5xl mx-auto px-4 py-6">
         {activeTab === 'dashboard' && <DashboardSection monthData={monthData} monthKey={currentMonth} categories={categories} />}
         {activeTab === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
-        {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} />}
+        {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} monthKey={currentMonth} />}
         {activeTab === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} categories={categories} onAddCategory={addCategory} />}
         {activeTab === 'privacy' && <PrivacyPolicyPage />}
         {activeTab === 'about' && <AboutPage />}
