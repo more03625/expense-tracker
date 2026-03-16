@@ -2712,7 +2712,7 @@ export default function App() {
         {activeTab === 'about' && <AboutPage />}
       </main>
 
-      {/* Mobile Bottom Nav */}
+      {/* Mobile Bottom Nav cmt */}
       <nav className="fixed bottom-0 left-0 right-0 md:hidden bg-navy-950/90 backdrop-blur-xl border-t border-navy-700/30 z-30">
         <div className="flex justify-around py-2">
           {TABS.map(tab => (
