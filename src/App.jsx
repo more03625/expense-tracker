@@ -14,7 +14,7 @@ import {
 import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
-import { doc, setDoc, onSnapshot } from 'firebase/firestore'
+import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore'
 import UPIImportModal from './components/UPIImportModal'
 import { parseBankStatement } from './importers/bank/registry'
 import { checkDuplicate } from './importers/bank/utils'
@@ -86,6 +86,10 @@ function loadData() {
   try { return JSON.parse(localStorage.getItem('financeData')) || {} } catch { return {} }
 }
 function saveData(data) { localStorage.setItem('financeData', JSON.stringify(data)) }
+function loadTimestamp() {
+  try { return parseInt(localStorage.getItem('financeDataTimestamp')) || 0 } catch { return 0 }
+}
+function saveTimestamp(ts) { localStorage.setItem('financeDataTimestamp', String(ts)) }
 
 function getMonthData(data, key) {
   return data[key] || { members: [], fixedExpenses: [], dailyExpenses: [] }
@@ -2156,6 +2160,8 @@ export default function App() {
   const skipNextFirestoreUpdate = useRef(false)
   const firestoreUnsub = useRef(null)
   const initialCloudLoadDone = useRef(false)
+  const localTimestampRef = useRef(loadTimestamp())
+  const isApplyingCloudData = useRef(false)
 
   const monthData = getMonthData(data, currentMonth)
 
@@ -2168,6 +2174,18 @@ export default function App() {
     return unsub
   }, [])
 
+  // Reset cloud-load gate when app resumes from background so we
+  // always pull the latest snapshot before allowing any local pushes.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === 'visible' && user) {
+        initialCloudLoadDone.current = false
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [user])
+
   // Firestore real-time listener — attach when signed in
   useEffect(() => {
     if (firestoreUnsub.current) { firestoreUnsub.current(); firestoreUnsub.current = null }
@@ -2179,11 +2197,16 @@ export default function App() {
       if (skipNextFirestoreUpdate.current) { skipNextFirestoreUpdate.current = false; initialCloudLoadDone.current = true; return }
       if (snap.exists()) {
         const snapData = snap.data()
+        const cloudTs = snapData?.lastModified || 0
+        const localTs = localTimestampRef.current
         const cloudData = snapData?.financeData
-        if (cloudData && typeof cloudData === 'object') {
+        if (cloudData && typeof cloudData === 'object' && cloudTs >= localTs) {
           const { data: migrated } = migrateExpensesToCorrectMonths(cloudData)
+          isApplyingCloudData.current = true
           setData(migrated)
           saveData(migrated)
+          localTimestampRef.current = cloudTs
+          saveTimestamp(cloudTs)
           setSyncStatus('synced')
         }
         if (snapData?.categories && !skipNextCategoryUpdate.current) {
@@ -2203,11 +2226,21 @@ export default function App() {
   useEffect(() => {
     saveData(data)
     setStorageInfo(getStorageUsage())
+
+    if (isApplyingCloudData.current) {
+      isApplyingCloudData.current = false
+      return
+    }
+
+    const now = Date.now()
+    localTimestampRef.current = now
+    saveTimestamp(now)
+
     if (user && initialCloudLoadDone.current) {
       skipNextFirestoreUpdate.current = true
       setSyncing(true)
       const docRef = doc(db, 'users', user.uid)
-      setDoc(docRef, { financeData: data }, { merge: true })
+      setDoc(docRef, { financeData: data, lastModified: now }, { merge: true })
         .then(() => { setSyncStatus('synced'); setSyncing(false) })
         .catch(() => { setSyncStatus('error'); setSyncing(false) })
     }
@@ -2234,17 +2267,40 @@ export default function App() {
   async function handleSignIn() {
     try {
       setSyncing(true)
+      skipNextFirestoreUpdate.current = true
       const result = await signInWithPopup(auth, googleProvider)
       const docRef = doc(db, 'users', result.user.uid)
+
+      const cloudSnap = await getDoc(docRef)
+      const cloudPayload = cloudSnap.exists() ? cloudSnap.data() : null
+      const cloudTs = cloudPayload?.lastModified || 0
+      const localTs = localTimestampRef.current
+
       const localData = loadData()
       const hasLocalData = Object.keys(localData).some(k => {
         const md = localData[k]
         return md.members?.length > 0 || md.fixedExpenses?.length > 0 || md.dailyExpenses?.length > 0
       })
       const localCustomCats = loadCustomCategories()
-      if (hasLocalData || localCustomCats.length > 0) {
-        skipNextFirestoreUpdate.current = true
-        const payload = { financeData: localData }
+
+      if (cloudTs > localTs && cloudPayload?.financeData) {
+        const { data: migrated } = migrateExpensesToCorrectMonths(cloudPayload.financeData)
+        isApplyingCloudData.current = true
+        setData(migrated)
+        saveData(migrated)
+        localTimestampRef.current = cloudTs
+        saveTimestamp(cloudTs)
+        if (cloudPayload?.categories) {
+          const cloudCustom = cloudPayload.categories.filter(c => !c.builtIn)
+          saveCustomCategories(cloudCustom)
+          setCategories([...DEFAULT_CATEGORIES, ...cloudCustom])
+        }
+        toast(`Signed in as ${result.user.displayName} — cloud data loaded`)
+      } else if (hasLocalData || localCustomCats.length > 0) {
+        const now = Date.now()
+        localTimestampRef.current = now
+        saveTimestamp(now)
+        const payload = { financeData: localData, lastModified: now }
         if (localCustomCats.length > 0) {
           payload.categories = [...DEFAULT_CATEGORIES, ...localCustomCats].map(({ icon, ...rest }) => rest)
         }
@@ -2255,6 +2311,7 @@ export default function App() {
       }
       setSyncing(false)
     } catch (err) {
+      skipNextFirestoreUpdate.current = false
       if (err.code !== 'auth/popup-closed-by-user') toast('Sign-in failed: ' + err.message, 'error')
       setSyncing(false)
     }
@@ -2655,7 +2712,7 @@ export default function App() {
         {activeTab === 'about' && <AboutPage />}
       </main>
 
-      {/* Mobile Bottom Nav */}
+      {/* Mobile Bottom Nav cmt */}
       <nav className="fixed bottom-0 left-0 right-0 md:hidden bg-navy-950/90 backdrop-blur-xl border-t border-navy-700/30 z-30">
         <div className="flex justify-around py-2">
           {TABS.map(tab => (
