@@ -9,13 +9,15 @@ import {
   ChevronRight as ChevronRightIcon, Coffee, Car, Heart, Film, Zap,
   MoreHorizontal, Search, Bell, CircleDot, Upload, FileText, FileSpreadsheet,
   Menu, Database, HardDrive, LogIn, LogOut, Cloud, CloudOff, Loader2,
-  Shield, Info
+  Shield, Info, ArrowLeftRight
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 import { doc, setDoc, onSnapshot } from 'firebase/firestore'
 import UPIImportModal from './components/UPIImportModal'
+import { parseBankStatement } from './importers/bank/registry'
+import { checkDuplicate } from './importers/bank/utils'
 
 const DEFAULT_CATEGORIES = [
   { id: 'food', name: 'Food', color: '#f59e0b', emoji: null, icon: Coffee, builtIn: true },
@@ -1297,7 +1299,7 @@ function parseExcelSheet(file) {
   })
 }
 
-function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, toast, currentMonth, categories, onAddCategory }) {
+function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBankImport, toast, currentMonth, categories, onAddCategory, appData }) {
   const [mode, setMode] = useState('upi')
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
@@ -1310,6 +1312,17 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, toast
   const [jsonParsed, setJsonParsed] = useState(null)
   const [jsonError, setJsonError] = useState('')
   const fileInputRef = useRef(null)
+
+  // Bank statement state
+  const [bankFile, setBankFile] = useState(null)
+  const [bankParsed, setBankParsed] = useState(null)
+  const [bankLoading, setBankLoading] = useState(false)
+  const [bankError, setBankError] = useState('')
+  const [bankSelected, setBankSelected] = useState({})
+  const [bankFilter, setBankFilter] = useState('paid')
+  const [bankDuplicates, setBankDuplicates] = useState({})
+  const [bankExcludeSelf, setBankExcludeSelf] = useState(true)
+  const bankFileRef = useRef(null)
 
   useEffect(() => {
     if (open) {
@@ -1324,10 +1337,18 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, toast
       setJsonText('')
       setJsonParsed(null)
       setJsonError('')
+      setBankFile(null)
+      setBankParsed(null)
+      setBankLoading(false)
+      setBankError('')
+      setBankSelected({})
+      setBankFilter('paid')
+      setBankDuplicates({})
+      setBankExcludeSelf(true)
     }
   }, [open, currentMonth])
 
-  function reset() { setFile(null); setParsed(null); setLoading(false); setJsonText(''); setJsonParsed(null); setJsonError('') }
+  function reset() { setFile(null); setParsed(null); setLoading(false); setJsonText(''); setJsonParsed(null); setJsonError(''); setBankFile(null); setBankParsed(null); setBankLoading(false); setBankError(''); setBankSelected({}); setBankFilter('paid'); setBankDuplicates({}); setBankExcludeSelf(true) }
 
   async function handleFile(e) {
     const f = e.target.files?.[0]
@@ -1387,6 +1408,92 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, toast
     onClose()
   }
 
+  async function handleBankFile(e) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setBankFile(f)
+    setBankLoading(true)
+    setBankError('')
+    setBankParsed(null)
+    setBankSelected({})
+    setBankDuplicates({})
+    try {
+      const result = await parseBankStatement(f)
+      setBankParsed(result)
+
+      // Gather all existing daily expenses for duplicate checking
+      const allExisting = []
+      if (appData && typeof appData === 'object') {
+        for (const monthData of Object.values(appData)) {
+          if (monthData?.dailyExpenses) {
+            for (const exp of monthData.dailyExpenses) {
+              allExisting.push(exp)
+            }
+          }
+        }
+      }
+
+      const dupes = {}
+      const sel = {}
+      result.transactions.forEach((t, i) => {
+        const dupResult = checkDuplicate(t, allExisting)
+        if (dupResult.status) {
+          dupes[i] = dupResult.status
+        } else if (t.type === 'paid' && !t.isSelfTransfer) {
+          sel[i] = true
+        }
+      })
+      setBankDuplicates(dupes)
+      setBankSelected(sel)
+    } catch (err) {
+      setBankError(err.message || 'Failed to parse bank statement')
+    }
+    setBankLoading(false)
+  }
+
+  function toggleBankTxn(idx) {
+    setBankSelected(prev => {
+      const next = { ...prev }
+      if (next[idx]) delete next[idx]
+      else next[idx] = true
+      return next
+    })
+  }
+
+  function toggleAllFiltered() {
+    if (!bankParsed) return
+    const filtered = bankParsed.transactions
+      .map((t, i) => ({ t, i }))
+      .filter(({ t }) => bankFilter === 'all' || t.type === bankFilter)
+      .filter(({ t }) => !bankExcludeSelf || !t.isSelfTransfer)
+    const allSelected = filtered.every(({ i }) => bankSelected[i])
+    setBankSelected(prev => {
+      const next = { ...prev }
+      filtered.forEach(({ i }) => { allSelected ? delete next[i] : next[i] = true })
+      return next
+    })
+  }
+
+  function handleBankImport() {
+    if (!bankParsed) return
+    const selected = bankParsed.transactions.filter((_, i) => bankSelected[i])
+    if (selected.length === 0) { toast('No transactions selected', 'error'); return }
+    const expenses = selected.map(t => ({
+      id: genId(),
+      title: t.title,
+      description: t.description,
+      amount: t.amount,
+      category: t.category,
+      date: t.date,
+      paymentMethod: t.paymentMethod,
+      importRef: t.importRef,
+      subItems: [],
+    }))
+    onBankImport(expenses)
+    reset()
+    onClose()
+  }
+
   if (!open) return null
 
   const totalDaily = parsed?.dailyExpenses?.reduce((s, e) => s + e.amount, 0) || 0
@@ -1401,15 +1508,13 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, toast
           <button onClick={() => { reset(); onClose() }} className="w-8 h-8 rounded-lg bg-slate-700/50 hover:bg-slate-600 flex items-center justify-center transition-colors"><X className="w-4 h-4" /></button>
         </div>
 
-        {/* Mode Tabs — excel/json hidden for now, can be re-enabled later */}
-        {false && (
+        {/* Mode Tabs */}
         <div className="flex bg-navy-950/50 border border-navy-700/30 rounded-xl overflow-hidden mb-5">
-          {[['excel', 'Excel File'], ['json', 'JSON Data'], ['upi', 'UPI Statement']].map(([id, label]) => (
+          {[['upi', 'UPI Statement'], ['bank', 'Bank Statement'], ['excel', 'Excel File'], ['json', 'JSON Data']].map(([id, label]) => (
             <button key={id} onClick={() => setMode(id)}
               className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${mode === id ? 'bg-gold-500 text-navy-950' : 'text-slate-400 hover:text-white'}`}>{label}</button>
           ))}
         </div>
-        )}
 
         {/* ── EXCEL MODE ── */}
         {mode === 'excel' && (
@@ -1625,6 +1730,195 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, toast
                 Import {jsonParsed?.totalMonths || 0} Month{jsonParsed?.totalMonths !== 1 ? 's' : ''}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ── BANK STATEMENT MODE ── */}
+        {mode === 'bank' && (
+          <div className="space-y-4">
+            <div className="mb-1">
+              <input ref={bankFileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBankFile} className="hidden" />
+              <button onClick={() => bankFileRef.current?.click()}
+                className={`w-full border-2 border-dashed rounded-xl p-8 text-center transition-colors ${bankFile ? 'border-emerald-500/40 bg-emerald-950/20' : 'border-navy-700/50 hover:border-gold-500/40 bg-navy-950/30'}`}>
+                {bankLoading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-gold-400" />
+                    <p className="text-slate-400">Parsing bank statement...</p>
+                  </div>
+                ) : bankFile ? (
+                  <div>
+                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 text-emerald-400" />
+                    <p className="text-emerald-400 font-medium">{bankFile.name}</p>
+                    {bankParsed && <p className="text-xs text-gold-400 mt-1">{bankParsed.bankName} Bank detected</p>}
+                    <p className="text-xs text-slate-500 mt-1">Click to change file</p>
+                  </div>
+                ) : (
+                  <div>
+                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 text-slate-500" />
+                    <p className="text-slate-400 font-medium">Click to upload bank statement</p>
+                    <p className="text-xs text-slate-500 mt-1">.xlsx, .xls, or .csv — HDFC, ICICI, Kotak</p>
+                  </div>
+                )}
+              </button>
+            </div>
+
+            {bankError && (
+              <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2.5">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{bankError}</span>
+              </div>
+            )}
+
+            {bankParsed && (
+              <>
+                {/* Summary cards */}
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-gold-500/10 border border-gold-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Bank</p>
+                    <p className="text-sm font-bold text-gold-400">{bankParsed.bankName}</p>
+                  </div>
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Transactions</p>
+                    <p className="text-lg font-bold text-blue-400">{bankParsed.summary.totalTransactions}</p>
+                  </div>
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Debits</p>
+                    <p className="text-sm font-bold text-red-400">{fmt(bankParsed.summary.totalPaid)}</p>
+                    <p className="text-[10px] text-slate-500">{bankParsed.summary.paidCount} txns</p>
+                  </div>
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-400">Credits</p>
+                    <p className="text-sm font-bold text-emerald-400">{fmt(bankParsed.summary.totalReceived)}</p>
+                    <p className="text-[10px] text-slate-500">{bankParsed.summary.receivedCount} txns</p>
+                  </div>
+                </div>
+
+                {bankParsed.summary.dateRange && (
+                  <p className="text-xs text-slate-500 text-center">
+                    {dayLabel(bankParsed.summary.dateRange.from)} — {dayLabel(bankParsed.summary.dateRange.to)}
+                  </p>
+                )}
+
+                {bankParsed.summary.selfTransferCount > 0 && (
+                  <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <ArrowLeftRight className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+                      <p className="text-xs text-purple-300">
+                        <span className="font-semibold">{bankParsed.summary.selfTransferCount}</span> self-transfer{bankParsed.summary.selfTransferCount > 1 ? 's' : ''} detected
+                      </p>
+                    </div>
+                    <div className="flex bg-navy-950/60 border border-navy-700/30 rounded-lg overflow-hidden flex-shrink-0">
+                      <button onClick={() => {
+                        setBankExcludeSelf(true)
+                        setBankSelected(prev => {
+                          const next = { ...prev }
+                          bankParsed.transactions.forEach((t, i) => { if (t.isSelfTransfer) delete next[i] })
+                          return next
+                        })
+                      }}
+                        className={`px-2.5 py-1 text-[10px] font-medium transition-colors ${bankExcludeSelf ? 'bg-purple-500 text-white' : 'text-slate-400 hover:text-white'}`}>
+                        Exclude
+                      </button>
+                      <button onClick={() => {
+                        setBankExcludeSelf(false)
+                        setBankSelected(prev => {
+                          const next = { ...prev }
+                          bankParsed.transactions.forEach((t, i) => {
+                            if (t.isSelfTransfer && !bankDuplicates[i] && t.type === 'paid') next[i] = true
+                          })
+                          return next
+                        })
+                      }}
+                        className={`px-2.5 py-1 text-[10px] font-medium transition-colors ${!bankExcludeSelf ? 'bg-purple-500 text-white' : 'text-slate-400 hover:text-white'}`}>
+                        Include
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Filter + Select All */}
+                <div className="flex items-center justify-between">
+                  <div className="flex bg-navy-950/50 border border-navy-700/30 rounded-lg overflow-hidden">
+                    {[['paid', 'Debits'], ['received', 'Credits'], ['all', 'All']].map(([id, label]) => (
+                      <button key={id} onClick={() => setBankFilter(id)}
+                        className={`px-3 py-1.5 text-xs font-medium transition-colors ${bankFilter === id ? 'bg-gold-500 text-navy-950' : 'text-slate-400 hover:text-white'}`}>{label}</button>
+                    ))}
+                  </div>
+                  <button onClick={toggleAllFiltered} className="text-xs text-gold-400 hover:text-gold-300 font-medium transition-colors">
+                    Toggle All
+                  </button>
+                </div>
+
+                {/* Duplicate notice */}
+                {Object.keys(bankDuplicates).length > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>
+                      {Object.values(bankDuplicates).filter(s => s === 'exact').length > 0 &&
+                        `${Object.values(bankDuplicates).filter(s => s === 'exact').length} already imported`}
+                      {Object.values(bankDuplicates).filter(s => s === 'exact').length > 0 &&
+                        Object.values(bankDuplicates).filter(s => s === 'likely').length > 0 && ', '}
+                      {Object.values(bankDuplicates).filter(s => s === 'likely').length > 0 &&
+                        `${Object.values(bankDuplicates).filter(s => s === 'likely').length} likely duplicate${Object.values(bankDuplicates).filter(s => s === 'likely').length !== 1 ? 's' : ''}`}
+                      {' '}— auto-deselected. You can still select them manually.
+                    </span>
+                  </div>
+                )}
+
+                {/* Transaction list */}
+                <div className="border border-navy-700/30 rounded-xl overflow-hidden">
+                  <div className="bg-navy-800/50 px-4 py-2 flex justify-between items-center">
+                    <p className="text-xs font-medium text-slate-300">
+                      {Object.keys(bankSelected).length} of {bankParsed.transactions.length} selected
+                    </p>
+                    <p className="text-xs font-semibold text-gold-400">
+                      {fmt(bankParsed.transactions.filter((_, i) => bankSelected[i]).reduce((s, t) => s + t.amount, 0))}
+                    </p>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto divide-y divide-navy-700/20">
+                    {bankParsed.transactions
+                      .map((t, i) => ({ t, i }))
+                      .filter(({ t }) => bankFilter === 'all' || t.type === bankFilter)
+                      .filter(({ t }) => !bankExcludeSelf || !t.isSelfTransfer)
+                      .map(({ t, i }) => {
+                        const dupStatus = bankDuplicates[i]
+                        return (
+                        <label key={i} className={`flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-colors ${dupStatus ? 'opacity-50' : ''} ${bankSelected[i] ? 'bg-navy-800/30' : 'hover:bg-navy-800/20'}`}>
+                          <input type="checkbox" checked={!!bankSelected[i]} onChange={() => toggleBankTxn(i)}
+                            className="w-4 h-4 rounded border-slate-600 text-gold-500 focus:ring-gold-500/30 bg-navy-950" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-slate-300 truncate">{t.title}</span>
+                                {dupStatus === 'exact' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 flex-shrink-0">Duplicate</span>}
+                                {dupStatus === 'likely' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 flex-shrink-0">Likely duplicate</span>}
+                                {t.isSelfTransfer && !bankExcludeSelf && <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 flex-shrink-0">Self Transfer</span>}
+                              </div>
+                              <span className={`font-medium flex-shrink-0 ${t.type === 'paid' ? 'text-red-400' : 'text-emerald-400'}`}>
+                                {t.type === 'paid' ? '-' : '+'}{fmt(t.amount)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] text-slate-500">{dayLabel(t.date)}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-navy-800 text-slate-400">{t.paymentMethod}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-navy-800 text-gold-400/70">{t.category}</span>
+                            </div>
+                          </div>
+                        </label>
+                        )
+                      })}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-2">
+                  <button onClick={() => { reset(); onClose() }} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-medium transition-colors">Cancel</button>
+                  <button onClick={handleBankImport} disabled={Object.keys(bankSelected).length === 0}
+                    className="px-5 py-2 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    Import {Object.keys(bankSelected).length} Transaction{Object.keys(bankSelected).length !== 1 ? 's' : ''}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -2081,6 +2375,16 @@ export default function App() {
     setActiveTab('daily')
   }
 
+  function handleBankStatementImport(expenses) {
+    if (!expenses || expenses.length === 0) return
+    addDailyExpenses(expenses)
+    const firstMonth = expenses[0].date.slice(0, 7)
+    setCurrentMonth(firstMonth)
+    setActiveTab('daily')
+    const months = [...new Set(expenses.map(e => e.date.slice(0, 7)))].sort()
+    toast(`Bank statement imported: ${expenses.length} transaction${expenses.length !== 1 ? 's' : ''} across ${months.length} month${months.length !== 1 ? 's' : ''}`)
+  }
+
   function changeMonth(delta) {
     const d = parseMonthKey(currentMonth)
     d.setMonth(d.getMonth() + delta)
@@ -2129,10 +2433,12 @@ export default function App() {
         onImport={handleExcelImport}
         onJsonImport={handleJsonImport}
         onUPIImport={handleUPIImport}
+        onBankImport={handleBankStatementImport}
         toast={toast}
         currentMonth={currentMonth}
         categories={categories}
         onAddCategory={addCategory}
+        appData={data}
       />
 
       {/* Sidebar */}
