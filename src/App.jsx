@@ -9,7 +9,8 @@ import {
   ChevronRight as ChevronRightIcon, Coffee, Car, Heart, Film, Zap,
   MoreHorizontal, Search, Bell, CircleDot, Upload, FileText, FileSpreadsheet,
   Menu, Database, HardDrive, LogIn, LogOut, Cloud, CloudOff, Loader2,
-  Shield, Info, ArrowLeftRight
+  Shield, Info, ArrowLeftRight, GraduationCap, Shirt, Plane, Gift,
+  Wrench, Smartphone, PiggyBank, Utensils, Droplets, Wifi
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
@@ -21,11 +22,22 @@ import { checkDuplicate } from './importers/bank/utils'
 
 const DEFAULT_CATEGORIES = [
   { id: 'food', name: 'Food', color: '#f59e0b', emoji: null, icon: Coffee, builtIn: true },
+  { id: 'groceries', name: 'Groceries', color: '#84cc16', emoji: null, icon: Utensils, builtIn: true },
   { id: 'transport', name: 'Transport', color: '#3b82f6', emoji: null, icon: Car, builtIn: true },
   { id: 'shopping', name: 'Shopping', color: '#ec4899', emoji: null, icon: ShoppingCart, builtIn: true },
   { id: 'health', name: 'Health', color: '#10b981', emoji: null, icon: Heart, builtIn: true },
   { id: 'entertainment', name: 'Entertainment', color: '#8b5cf6', emoji: null, icon: Film, builtIn: true },
   { id: 'bills', name: 'Bills', color: '#ef4444', emoji: null, icon: Zap, builtIn: true },
+  { id: 'rent', name: 'Rent', color: '#f97316', emoji: null, icon: Home, builtIn: true },
+  { id: 'utilities', name: 'Utilities', color: '#06b6d4', emoji: null, icon: Droplets, builtIn: true },
+  { id: 'subscriptions', name: 'Subscriptions', color: '#a855f7', emoji: null, icon: Wifi, builtIn: true },
+  { id: 'education', name: 'Education', color: '#0ea5e9', emoji: null, icon: GraduationCap, builtIn: true },
+  { id: 'clothing', name: 'Clothing', color: '#d946ef', emoji: null, icon: Shirt, builtIn: true },
+  { id: 'travel', name: 'Travel', color: '#14b8a6', emoji: null, icon: Plane, builtIn: true },
+  { id: 'gifts', name: 'Gifts', color: '#f43f5e', emoji: null, icon: Gift, builtIn: true },
+  { id: 'maintenance', name: 'Maintenance', color: '#78716c', emoji: null, icon: Wrench, builtIn: true },
+  { id: 'mobile', name: 'Mobile & Internet', color: '#6366f1', emoji: null, icon: Smartphone, builtIn: true },
+  { id: 'savings', name: 'Savings & Investment', color: '#22c55e', emoji: null, icon: PiggyBank, builtIn: true },
   { id: 'other', name: 'Other', color: '#6b7280', emoji: null, icon: MoreHorizontal, builtIn: true },
 ]
 const PAYMENT_METHODS = ['Cash', 'UPI', 'Card']
@@ -2162,6 +2174,7 @@ export default function App() {
   const initialCloudLoadDone = useRef(false)
   const localTimestampRef = useRef(loadTimestamp())
   const isApplyingCloudData = useRef(false)
+  const prevDataRef = useRef(data)
 
   const monthData = getMonthData(data, currentMonth)
 
@@ -2224,6 +2237,11 @@ export default function App() {
 
   // Save to localStorage + Firestore on data change
   useEffect(() => {
+    const dataChanged = prevDataRef.current !== data
+    prevDataRef.current = data
+
+    if (!dataChanged) return
+
     saveData(data)
     setStorageInfo(getStorageUsage())
 
