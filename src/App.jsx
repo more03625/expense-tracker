@@ -2142,7 +2142,20 @@ function migrateExpensesToCorrectMonths(data) {
   return { data: migrated, moved }
 }
 
+const HAPTIC_SELECTORS = 'button, [role="button"], input[type="checkbox"], input[type="radio"], a, label'
+function haptic(ms = 8) {
+  try { navigator?.vibrate?.(ms) } catch {}
+}
+
 export default function App() {
+  useEffect(() => {
+    function onTap(e) {
+      if (e.target.closest(HAPTIC_SELECTORS)) haptic()
+    }
+    document.addEventListener('pointerdown', onTap, { passive: true })
+    return () => document.removeEventListener('pointerdown', onTap)
+  }, [])
+
   const [migrationInfo] = useState(() => {
     const raw = loadData()
     const { data: fixed, moved } = migrateExpensesToCorrectMonths(raw)
