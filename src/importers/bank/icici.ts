@@ -56,12 +56,24 @@ export const iciciParser: BankParser = {
       const rowText = rows[i].map(c => str(c)).join(' ').toUpperCase()
       if (rowText.includes('DETAILED STATEMENT')) return true
     }
-    // Also check for ICICI-specific header columns
     for (let i = 0; i < Math.min(rows.length, 20); i++) {
       const rowText = rows[i].map(c => str(c)).join(' ').toUpperCase()
       if (rowText.includes('TRANSACTION REMARKS') && rowText.includes('WITHDRAWAL AMOUNT')) return true
     }
     return false
+  },
+
+  extractAccountHolder(rows: unknown[][]): string {
+    for (let i = 0; i < Math.min(rows.length, 15); i++) {
+      const cell3 = str(rows[i][3])
+      const dashMatch = cell3.match(/-\s*([A-Z][A-Z\s]+)$/i)
+      if (dashMatch) return dashMatch[1].trim()
+
+      const cell1 = str(rows[i][1])
+      const listMatch = cell1.match(/Transactions List\s*-\s*(.+?)\s*-\s*\d+/i)
+      if (listMatch) return listMatch[1].trim()
+    }
+    return ''
   },
 
   parse(rows: unknown[][]): BankTransaction[] {
@@ -107,6 +119,7 @@ export const iciciParser: BankParser = {
         refNumber: str(row[4]),
         bank: 'ICICI',
         importRef: buildImportRef('ICICI', dateStr, amount, remarks),
+        isSelfTransfer: false,
       })
     }
 

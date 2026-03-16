@@ -38,6 +38,18 @@ export const hdfcParser: BankParser = {
     return false
   },
 
+  extractAccountHolder(rows: unknown[][]): string {
+    for (let i = 3; i < Math.min(rows.length, 12); i++) {
+      const cell = str(rows[i][0]).trim()
+      if (!cell) continue
+      if (/\d{6}|\bNAGAR\b|\bROAD\b|\bINDIA\b|\bMUMBAI\b|\bSTORE\b/i.test(cell)) continue
+      if (/JOINT|NOMINATION|STATEMENT|ACCOUNT|EMAIL|PHONE/i.test(cell)) continue
+      const cleaned = cell.replace(/^(MR|MRS|MS|MASTER|SMT|DR)\.?\s*/i, '').trim()
+      if (cleaned.length > 3 && /^[A-Z\s]+$/i.test(cleaned)) return cleaned
+    }
+    return ''
+  },
+
   parse(rows: unknown[][]): BankTransaction[] {
     const startRow = findDataStartRow(rows)
     if (startRow < 0) return []
@@ -70,6 +82,7 @@ export const hdfcParser: BankParser = {
         refNumber: str(row[2]),
         bank: 'HDFC',
         importRef: buildImportRef('HDFC', dateStr, amount, narration),
+        isSelfTransfer: false,
       })
     }
 

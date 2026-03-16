@@ -30,8 +30,6 @@ export const kotakParser: BankParser = {
 
   detect(rows: unknown[][]): boolean {
     if (!rows || rows.length < 15) return false
-    // Kotak statements have "Account Statement" in early rows
-    // and "Sl. No." as a column header
     let hasAccountStatement = false
     let hasSlNo = false
     for (let i = 0; i < Math.min(rows.length, 20); i++) {
@@ -40,6 +38,19 @@ export const kotakParser: BankParser = {
       if (rowText.includes('SL. NO') || rowText.includes('SL NO')) hasSlNo = true
     }
     return hasAccountStatement && hasSlNo
+  },
+
+  extractAccountHolder(rows: unknown[][]): string {
+    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+      const rowText = rows[i].map(c => str(c)).join(' ').toUpperCase()
+      if (rowText.includes('ACCOUNT STATEMENT')) {
+        const nameCell = str(rows[i + 1]?.[0]).trim()
+        if (nameCell && /^[A-Za-z\s]+$/.test(nameCell) && nameCell.length > 3) {
+          return nameCell
+        }
+      }
+    }
+    return ''
   },
 
   parse(rows: unknown[][]): BankTransaction[] {
@@ -74,6 +85,7 @@ export const kotakParser: BankParser = {
         refNumber: str(row[4]),
         bank: 'Kotak',
         importRef: buildImportRef('Kotak', dateStr, amount, description),
+        isSelfTransfer: false,
       })
     }
 

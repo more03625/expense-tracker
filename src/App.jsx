@@ -9,7 +9,7 @@ import {
   ChevronRight as ChevronRightIcon, Coffee, Car, Heart, Film, Zap,
   MoreHorizontal, Search, Bell, CircleDot, Upload, FileText, FileSpreadsheet,
   Menu, Database, HardDrive, LogIn, LogOut, Cloud, CloudOff, Loader2,
-  Shield, Info
+  Shield, Info, ArrowLeftRight
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
@@ -1321,6 +1321,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBan
   const [bankSelected, setBankSelected] = useState({})
   const [bankFilter, setBankFilter] = useState('paid')
   const [bankDuplicates, setBankDuplicates] = useState({})
+  const [bankExcludeSelf, setBankExcludeSelf] = useState(true)
   const bankFileRef = useRef(null)
 
   useEffect(() => {
@@ -1343,10 +1344,11 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBan
       setBankSelected({})
       setBankFilter('paid')
       setBankDuplicates({})
+      setBankExcludeSelf(true)
     }
   }, [open, currentMonth])
 
-  function reset() { setFile(null); setParsed(null); setLoading(false); setJsonText(''); setJsonParsed(null); setJsonError(''); setBankFile(null); setBankParsed(null); setBankLoading(false); setBankError(''); setBankSelected({}); setBankFilter('paid'); setBankDuplicates({}) }
+  function reset() { setFile(null); setParsed(null); setLoading(false); setJsonText(''); setJsonParsed(null); setJsonError(''); setBankFile(null); setBankParsed(null); setBankLoading(false); setBankError(''); setBankSelected({}); setBankFilter('paid'); setBankDuplicates({}); setBankExcludeSelf(true) }
 
   async function handleFile(e) {
     const f = e.target.files?.[0]
@@ -1431,14 +1433,13 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBan
         }
       }
 
-      // Check each parsed transaction for duplicates
       const dupes = {}
       const sel = {}
       result.transactions.forEach((t, i) => {
         const dupResult = checkDuplicate(t, allExisting)
         if (dupResult.status) {
           dupes[i] = dupResult.status
-        } else if (t.type === 'paid') {
+        } else if (t.type === 'paid' && !t.isSelfTransfer) {
           sel[i] = true
         }
       })
@@ -1464,6 +1465,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBan
     const filtered = bankParsed.transactions
       .map((t, i) => ({ t, i }))
       .filter(({ t }) => bankFilter === 'all' || t.type === bankFilter)
+      .filter(({ t }) => !bankExcludeSelf || !t.isSelfTransfer)
     const allSelected = filtered.every(({ i }) => bankSelected[i])
     setBankSelected(prev => {
       const next = { ...prev }
@@ -1797,6 +1799,43 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBan
                   </p>
                 )}
 
+                {bankParsed.summary.selfTransferCount > 0 && (
+                  <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <ArrowLeftRight className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+                      <p className="text-xs text-purple-300">
+                        <span className="font-semibold">{bankParsed.summary.selfTransferCount}</span> self-transfer{bankParsed.summary.selfTransferCount > 1 ? 's' : ''} detected
+                      </p>
+                    </div>
+                    <div className="flex bg-navy-950/60 border border-navy-700/30 rounded-lg overflow-hidden flex-shrink-0">
+                      <button onClick={() => {
+                        setBankExcludeSelf(true)
+                        setBankSelected(prev => {
+                          const next = { ...prev }
+                          bankParsed.transactions.forEach((t, i) => { if (t.isSelfTransfer) delete next[i] })
+                          return next
+                        })
+                      }}
+                        className={`px-2.5 py-1 text-[10px] font-medium transition-colors ${bankExcludeSelf ? 'bg-purple-500 text-white' : 'text-slate-400 hover:text-white'}`}>
+                        Exclude
+                      </button>
+                      <button onClick={() => {
+                        setBankExcludeSelf(false)
+                        setBankSelected(prev => {
+                          const next = { ...prev }
+                          bankParsed.transactions.forEach((t, i) => {
+                            if (t.isSelfTransfer && !bankDuplicates[i] && t.type === 'paid') next[i] = true
+                          })
+                          return next
+                        })
+                      }}
+                        className={`px-2.5 py-1 text-[10px] font-medium transition-colors ${!bankExcludeSelf ? 'bg-purple-500 text-white' : 'text-slate-400 hover:text-white'}`}>
+                        Include
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Filter + Select All */}
                 <div className="flex items-center justify-between">
                   <div className="flex bg-navy-950/50 border border-navy-700/30 rounded-lg overflow-hidden">
@@ -1840,6 +1879,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBan
                     {bankParsed.transactions
                       .map((t, i) => ({ t, i }))
                       .filter(({ t }) => bankFilter === 'all' || t.type === bankFilter)
+                      .filter(({ t }) => !bankExcludeSelf || !t.isSelfTransfer)
                       .map(({ t, i }) => {
                         const dupStatus = bankDuplicates[i]
                         return (
@@ -1852,6 +1892,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBan
                                 <span className="text-slate-300 truncate">{t.title}</span>
                                 {dupStatus === 'exact' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 flex-shrink-0">Duplicate</span>}
                                 {dupStatus === 'likely' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 flex-shrink-0">Likely duplicate</span>}
+                                {t.isSelfTransfer && !bankExcludeSelf && <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 flex-shrink-0">Self Transfer</span>}
                               </div>
                               <span className={`font-medium flex-shrink-0 ${t.type === 'paid' ? 'text-red-400' : 'text-emerald-400'}`}>
                                 {t.type === 'paid' ? '-' : '+'}{fmt(t.amount)}

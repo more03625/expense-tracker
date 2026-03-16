@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import type { BankParser, ParsedBankStatement } from './types'
-import { buildSummary } from './utils'
+import { buildSummary, markSelfTransfers } from './utils'
 import { hdfcParser } from './hdfc'
 import { kotakParser } from './kotak'
 import { iciciParser } from './icici'
@@ -68,5 +68,8 @@ export async function parseBankStatement(file: File): Promise<ParsedBankStatemen
     )
   }
 
-  return buildSummary(parser.bankName, transactions)
+  const accountHolder = parser.extractAccountHolder(rows)
+  markSelfTransfers(transactions, accountHolder)
+
+  return buildSummary(parser.bankName, transactions, accountHolder)
 }

@@ -275,13 +275,19 @@ export function str(value: unknown): string {
   return String(value).trim()
 }
 
-export function buildSummary(bankName: string, transactions: BankTransaction[]): ParsedBankStatement {
+export function buildSummary(
+  bankName: string,
+  transactions: BankTransaction[],
+  accountHolder: string,
+): ParsedBankStatement {
   const paid = transactions.filter(t => t.type === 'paid')
   const received = transactions.filter(t => t.type === 'received')
   const dates = transactions.map(t => t.date).sort()
+  const selfTransferCount = transactions.filter(t => t.isSelfTransfer).length
 
   return {
     bankName,
+    accountHolder,
     transactions,
     summary: {
       totalTransactions: transactions.length,
@@ -289,7 +295,133 @@ export function buildSummary(bankName: string, transactions: BankTransaction[]):
       receivedCount: received.length,
       totalPaid: paid.reduce((s, t) => s + t.amount, 0),
       totalReceived: received.reduce((s, t) => s + t.amount, 0),
+      selfTransferCount,
       dateRange: dates.length > 0 ? { from: dates[0], to: dates[dates.length - 1] } : null,
     },
+  }
+}
+
+// ─── Self-Transfer Detection ───────────────────────────────────────
+
+function normalizeNameTokens(name: string): string[] {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 1 && !['mr', 'mrs', 'ms', 'master', 'dr', 'smt'].includes(t))
+}
+
+/**
+ * Strict fuzzy match: EVERY payee token must match some holder token
+ * (exact or prefix match in either direction to handle truncation).
+ * Requires at least 2 matching tokens to avoid single-word false positives.
+ */
+function fuzzyNameMatch(holderTokens: string[], payeeTokens: string[]): boolean {
+  if (holderTokens.length === 0 || payeeTokens.length === 0) return false
+
+  let matchCount = 0
+  for (const pt of payeeTokens) {
+    let found = false
+    for (const ht of holderTokens) {
+      if (ht === pt || ht.startsWith(pt) || pt.startsWith(ht)) {
+        found = true
+        break
+      }
+    }
+    if (!found) return false
+    matchCount++
+  }
+
+  return matchCount >= 2
+}
+
+/**
+ * Check if the payee title IS a VPA whose prefix matches the holder's LAST name.
+ * Only uses the last name token to avoid matching family members who share
+ * middle names (e.g. "pandit03625" belonging to a parent vs "more03625" for self).
+ */
+function isOwnVPA(title: string, holderTokens: string[]): boolean {
+  if (!title.includes('@') || holderTokens.length === 0) return false
+  const prefix = title.split('@')[0].toLowerCase().replace(/-\d+$/, '')
+  const alphaStart = prefix.match(/^[a-z]+/)?.[0]
+  if (!alphaStart || alphaStart.length < 3) return false
+  const lastName = holderTokens[holderTokens.length - 1]
+  return alphaStart === lastName && /\d/.test(prefix)
+}
+
+const SELF_KEYWORDS_RE = /\bcash paid self\b|\bself transfer\b|\bown account\b|\bfund transfer self\b/i
+const CBDC_RE = /^CBDC-/i
+
+function isSelfTransferByNameOrKeyword(txn: BankTransaction, holderTokens: string[]): boolean {
+  if (SELF_KEYWORDS_RE.test(txn.description)) return true
+  if (CBDC_RE.test(txn.description)) return true
+  if (/\/self(?:\/|\b|$)/i.test(txn.description)) return true
+
+  if (isOwnVPA(txn.title, holderTokens)) return true
+
+  const payeeTokens = normalizeNameTokens(txn.title)
+  return fuzzyNameMatch(holderTokens, payeeTokens)
+}
+
+/**
+ * Extract VPA prefixes from a transaction description.
+ * Looks for patterns like "name@bank" and returns the prefix before @.
+ */
+function extractVPAPrefixes(description: string): string[] {
+  const prefixes: string[] = []
+  const vpaMatches = description.match(/[\w.-]+@[\w]+/g)
+  if (vpaMatches) {
+    for (const vpa of vpaMatches) {
+      const atIdx = vpa.indexOf('@')
+      if (atIdx > 0) {
+        let prefix = vpa.substring(0, atIdx).toLowerCase()
+        prefix = prefix.replace(/-\d+$/, '')
+        if (prefix.length > 2) prefixes.push(prefix)
+      }
+    }
+  }
+  return prefixes
+}
+
+/**
+ * Two-pass self-transfer marker. Mutates transactions to set isSelfTransfer.
+ *
+ * Pass 1: Identify self-transfers by name matching and keywords.
+ *         Collect VPA prefixes from matched transactions.
+ * Pass 2: Identify remaining self-transfers whose payee VPA
+ *         matches a prefix discovered in Pass 1.
+ */
+export function markSelfTransfers(
+  transactions: BankTransaction[],
+  accountHolder: string,
+): void {
+  if (!accountHolder.trim()) return
+
+  const holderTokens = normalizeNameTokens(accountHolder)
+  if (holderTokens.length === 0) return
+
+  const knownVPAPrefixes = new Set<string>()
+
+  for (const txn of transactions) {
+    if (isSelfTransferByNameOrKeyword(txn, holderTokens)) {
+      txn.isSelfTransfer = true
+      for (const prefix of extractVPAPrefixes(txn.description)) {
+        knownVPAPrefixes.add(prefix)
+      }
+    }
+  }
+
+  if (knownVPAPrefixes.size > 0) {
+    for (const txn of transactions) {
+      if (txn.isSelfTransfer) continue
+      const payeePrefixes = extractVPAPrefixes(txn.description)
+      const payeeTitleLower = txn.title.toLowerCase().replace(/-\d+$/, '')
+      for (const known of knownVPAPrefixes) {
+        if (payeePrefixes.includes(known) || payeeTitleLower === known) {
+          txn.isSelfTransfer = true
+          break
+        }
+      }
+    }
   }
 }
