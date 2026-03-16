@@ -2162,6 +2162,7 @@ export default function App() {
   const initialCloudLoadDone = useRef(false)
   const localTimestampRef = useRef(loadTimestamp())
   const isApplyingCloudData = useRef(false)
+  const prevDataRef = useRef(data)
 
   const monthData = getMonthData(data, currentMonth)
 
@@ -2224,6 +2225,11 @@ export default function App() {
 
   // Save to localStorage + Firestore on data change
   useEffect(() => {
+    const dataChanged = prevDataRef.current !== data
+    prevDataRef.current = data
+
+    if (!dataChanged) return
+
     saveData(data)
     setStorageInfo(getStorageUsage())
 
