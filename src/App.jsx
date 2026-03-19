@@ -10,7 +10,8 @@ import {
   MoreHorizontal, Search, Bell, CircleDot, Upload, FileText, FileSpreadsheet,
   Menu, Database, HardDrive, LogIn, LogOut, Cloud, CloudOff, Loader2,
   Shield, Info, ArrowLeftRight, GraduationCap, Shirt, Plane, Gift,
-  Wrench, Smartphone, PiggyBank, Utensils, Droplets, Wifi, MessageSquare
+  Wrench, Smartphone, PiggyBank, Utensils, Droplets, Wifi, MessageSquare,
+  Volume2, VolumeX
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
@@ -2212,8 +2213,32 @@ function migrateExpensesToCorrectMonths(data) {
 }
 
 const HAPTIC_SELECTORS = 'button, [role="button"], input[type="checkbox"], input[type="radio"], a, label'
+
+let _audioCtx = null
+function getAudioCtx() {
+  if (!_audioCtx) { try { _audioCtx = new AudioContext() } catch { return null } }
+  if (_audioCtx.state === 'suspended') _audioCtx.resume()
+  return _audioCtx
+}
+
+function playClick() {
+  if (localStorage.getItem('hapticSoundMuted') === '1') return
+  const ctx = getAudioCtx()
+  if (!ctx) return
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
+  osc.type = 'sine'
+  osc.frequency.value = 1800
+  gain.gain.setValueAtTime(0.08, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.006)
+  osc.connect(gain).connect(ctx.destination)
+  osc.start(ctx.currentTime)
+  osc.stop(ctx.currentTime + 0.008)
+}
+
 function haptic(ms = 8) {
   try { navigator?.vibrate?.(ms) } catch {}
+  playClick()
 }
 
 export default function App() {
@@ -2237,6 +2262,7 @@ export default function App() {
   const [showImport, setShowImport] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [hapticMuted, setHapticMuted] = useState(() => localStorage.getItem('hapticSoundMuted') === '1')
   const [showCarryOverConfirm, setShowCarryOverConfirm] = useState(false)
   const { toasts, toast, removeToast } = useToast()
   const [storageInfo, setStorageInfo] = useState(() => getStorageUsage())
@@ -2295,7 +2321,9 @@ export default function App() {
         const cloudTs = snapData?.lastModified || 0
         const localTs = localTimestampRef.current
         const cloudData = snapData?.financeData
-        if (cloudData && typeof cloudData === 'object' && cloudTs >= localTs) {
+        const isFirstSync = !initialCloudLoadDone.current
+        const hasCloudData = cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0
+        if (hasCloudData && (isFirstSync || cloudTs >= localTs)) {
           const { data: migrated } = migrateExpensesToCorrectMonths(cloudData)
           isApplyingCloudData.current = true
           setData(migrated)
@@ -2383,7 +2411,7 @@ export default function App() {
       })
       const localCustomCats = loadCustomCategories()
 
-      if (cloudTs > localTs && cloudPayload?.financeData) {
+      if (cloudTs >= localTs && cloudPayload?.financeData) {
         const { data: migrated } = migrateExpensesToCorrectMonths(cloudPayload.financeData)
         isApplyingCloudData.current = true
         setData(migrated)
@@ -2663,6 +2691,24 @@ export default function App() {
             <button onClick={() => { setActiveTab('about'); setSidebarOpen(false) }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${activeTab === 'about' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
               <Info className="w-4.5 h-4.5" /> About
+            </button>
+
+            <div className="my-3 border-t border-navy-700/30" />
+            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Preferences</p>
+            <button onClick={() => {
+              const next = !hapticMuted
+              setHapticMuted(next)
+              localStorage.setItem('hapticSoundMuted', next ? '1' : '0')
+              if (!next) playClick()
+            }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
+              <span className="flex items-center gap-3">
+                {hapticMuted ? <VolumeX className="w-4.5 h-4.5" /> : <Volume2 className="w-4.5 h-4.5" />}
+                Tap Sound
+              </span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${hapticMuted ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
+                {hapticMuted ? 'OFF' : 'ON'}
+              </span>
             </button>
           </nav>
 
