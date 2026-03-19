@@ -10,7 +10,7 @@ import {
   MoreHorizontal, Search, Bell, CircleDot, Upload, FileText, FileSpreadsheet,
   Menu, Database, HardDrive, LogIn, LogOut, Cloud, CloudOff, Loader2,
   Shield, Info, ArrowLeftRight, GraduationCap, Shirt, Plane, Gift,
-  Wrench, Smartphone, PiggyBank, Utensils, Droplets, Wifi
+  Wrench, Smartphone, PiggyBank, Utensils, Droplets, Wifi, MessageSquare
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
@@ -19,6 +19,7 @@ import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore'
 import UPIImportModal from './components/UPIImportModal'
 import { parseBankStatement } from './importers/bank/registry'
 import { checkDuplicate } from './importers/bank/utils'
+import { parseSMS } from './importers/smsParser'
 
 const DEFAULT_CATEGORIES = [
   { id: 'food', name: 'Food', color: '#f59e0b', emoji: null, icon: Coffee, builtIn: true },
@@ -206,6 +207,26 @@ function CategoryIcon({ category, categories, size = 'w-5 h-5' }) {
   if (cat.emoji) return <span className="text-base leading-none">{cat.emoji}</span>
   if (cat.icon) { const Icon = cat.icon; return <Icon className={size} style={{ color: cat.color }} /> }
   return <CircleDot className={size} style={{ color: cat.color }} />
+}
+
+const BANK_STYLES = {
+  HDFC: { bg: '#004b87', text: '#ffffff', label: 'HDFC' },
+  ICICI: { bg: '#f37920', text: '#ffffff', label: 'ICICI' },
+  Kotak: { bg: '#ed1c24', text: '#ffffff', label: 'Kotak' },
+  SBI: { bg: '#22409a', text: '#ffffff', label: 'SBI' },
+}
+
+function BankBadge({ bank }) {
+  if (!bank) return null
+  const style = BANK_STYLES[bank] || { bg: '#475569', text: '#ffffff', label: bank }
+  return (
+    <span
+      className="text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 leading-none"
+      style={{ backgroundColor: style.bg, color: style.text }}
+    >
+      {style.label}
+    </span>
+  )
 }
 
 function CategorySelect({ label, categories, value, onChange, onAddNew }) {
@@ -690,19 +711,40 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
   const [showAddCategory, setShowAddCategory] = useState(false)
   const today = new Date().toISOString().slice(0, 10)
   const defaultCatName = categories[0]?.name || 'Food'
-  const [form, setForm] = useState({ title: '', description: '', amount: '', category: defaultCatName, date: today, paymentMethod: PAYMENT_METHODS[1], subItems: [] })
+  const [form, setForm] = useState({ title: '', description: '', amount: '', category: defaultCatName, date: today, paymentMethod: PAYMENT_METHODS[1], bank: '', subItems: [] })
   const [subName, setSubName] = useState('')
   const [subAmount, setSubAmount] = useState('')
+  const [smsText, setSmsText] = useState('')
+  const [smsBank, setSmsBank] = useState('')
 
   function resetForm() {
     setShowForm(false); setEditId(null)
-    setForm({ title: '', description: '', amount: '', category: defaultCatName, date: today, paymentMethod: PAYMENT_METHODS[1], subItems: [] })
-    setSubName(''); setSubAmount('')
+    setForm({ title: '', description: '', amount: '', category: defaultCatName, date: today, paymentMethod: PAYMENT_METHODS[1], bank: '', subItems: [] })
+    setSubName(''); setSubAmount(''); setSmsText(''); setSmsBank('')
+  }
+
+  function handleSmsPaste(text) {
+    setSmsText(text)
+    setSmsBank('')
+    if (!text.trim()) return
+    const result = parseSMS(text)
+    if (!result) return
+    setSmsBank(result.bank)
+    setForm(f => ({
+      ...f,
+      title: result.payee,
+      description: text.trim(),
+      amount: result.amount,
+      category: result.category !== 'Other' ? result.category : f.category,
+      date: result.date,
+      paymentMethod: result.paymentMethod,
+      bank: result.bank || '',
+    }))
   }
 
   function startEdit(e) {
     setEditId(e.id)
-    setForm({ title: e.title, description: e.description || '', amount: e.amount, category: e.category, date: e.date, paymentMethod: e.paymentMethod, subItems: [...(e.subItems || [])] })
+    setForm({ title: e.title, description: e.description || '', amount: e.amount, category: e.category, date: e.date, paymentMethod: e.paymentMethod, bank: e.bank || '', subItems: [...(e.subItems || [])] })
     setShowForm(true)
   }
 
@@ -729,6 +771,7 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
       category: form.category,
       date: form.date,
       paymentMethod: form.paymentMethod,
+      bank: form.bank || '',
       subItems: form.subItems
     }
     if (editId) {
@@ -845,11 +888,12 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-white truncate">{e.title}</p>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5 flex-wrap">
                       <span className="px-1.5 py-0.5 rounded bg-navy-800 text-slate-400">{e.category}</span>
                       <span>{e.paymentMethod}</span>
+                      {e.bank && <BankBadge bank={e.bank} />}
                       {hasSubItems && <span className="text-gold-400">{e.subItems.length} items</span>}
-                      {e.description && <span>· {e.description}</span>}
+                      {e.description && !e.bank && <span className="truncate">· {e.description}</span>}
                     </div>
                   </div>
                   <span className="font-bold text-red-400 flex-shrink-0">{fmt(e.amount)}</span>
@@ -881,6 +925,30 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
 
       <Modal open={showForm} onClose={resetForm} title={editId ? 'Edit Expense' : 'Add Daily Expense'}>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!editId && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <MessageSquare className="w-3 h-3" /> Paste Bank SMS
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Paste your bank transaction SMS here to auto-fill..."
+                value={smsText}
+                onChange={e => handleSmsPaste(e.target.value)}
+                className="w-full bg-navy-950/50 border border-navy-700/50 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 transition-all resize-none"
+              />
+              {smsBank && (
+                <p className="text-[10px] text-emerald-400">
+                  {smsBank} Bank SMS detected — fields auto-filled below
+                </p>
+              )}
+              {smsText && !smsBank && (
+                <p className="text-[10px] text-amber-400">
+                  Could not parse SMS — try pasting the full message
+                </p>
+              )}
+            </div>
+          )}
           <Input label="Title" placeholder="e.g. Lunch, ICICI Credit Card" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
           <Input label="Description (optional)" placeholder="e.g. Office lunch with team" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           <div className="grid gap-4 sm:grid-cols-2">
@@ -948,7 +1016,7 @@ function DashboardSection({ monthData, monthKey, categories }) {
   const totalIncome = members.reduce((s, m) => s + Number(m.salary), 0)
   const totalFixed = fixedExpenses.reduce((s, e) => s + Number(e.amount), 0)
   const totalDaily = dailyExpenses.reduce((s, e) => s + Number(e.amount), 0)
-  const totalExpenses = totalFixed + totalDaily
+  const totalExpenses = totalDaily
   const savings = totalIncome - totalExpenses
   const spentPercent = totalIncome > 0 ? Math.min((totalExpenses / totalIncome) * 100, 100) : 0
 
@@ -1503,6 +1571,7 @@ function ImportModal({ open, onClose, onImport, onJsonImport, onUPIImport, onBan
       date: t.date,
       paymentMethod: t.paymentMethod,
       importRef: t.importRef,
+      bank: t.bank || '',
       subItems: [],
     }))
     onBankImport(expenses)
