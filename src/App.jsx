@@ -2295,7 +2295,9 @@ export default function App() {
         const cloudTs = snapData?.lastModified || 0
         const localTs = localTimestampRef.current
         const cloudData = snapData?.financeData
-        if (cloudData && typeof cloudData === 'object' && cloudTs >= localTs) {
+        const isFirstSync = !initialCloudLoadDone.current
+        const hasCloudData = cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0
+        if (hasCloudData && (isFirstSync || cloudTs >= localTs)) {
           const { data: migrated } = migrateExpensesToCorrectMonths(cloudData)
           isApplyingCloudData.current = true
           setData(migrated)
@@ -2383,7 +2385,7 @@ export default function App() {
       })
       const localCustomCats = loadCustomCategories()
 
-      if (cloudTs > localTs && cloudPayload?.financeData) {
+      if (cloudTs >= localTs && cloudPayload?.financeData) {
         const { data: migrated } = migrateExpensesToCorrectMonths(cloudPayload.financeData)
         isApplyingCloudData.current = true
         setData(migrated)
