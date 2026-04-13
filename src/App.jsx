@@ -832,6 +832,7 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
             {filter === 'today' ? "Today's" : 'Monthly'} total: <span className="text-gold-400 font-semibold">{fmt(totalFiltered)}</span>
             {' · '}{filtered.length} expense{filtered.length !== 1 && 's'}
           </p>
+          <p className="text-xs text-amber-400/70 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Don't add expenses already tracked in Fixed Expenses</p>
         </div>
         <button onClick={() => { resetForm(); setShowForm(true) }} className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 text-navy-950 rounded-xl font-semibold text-sm transition-colors">
           <Plus className="w-4 h-4" /> Add Expense
@@ -1017,7 +1018,7 @@ function DashboardSection({ monthData, monthKey, categories }) {
   const totalIncome = members.reduce((s, m) => s + Number(m.salary), 0)
   const totalFixed = fixedExpenses.reduce((s, e) => s + Number(e.amount), 0)
   const totalDaily = dailyExpenses.reduce((s, e) => s + Number(e.amount), 0)
-  const totalExpenses = totalDaily
+  const totalExpenses = totalFixed + totalDaily
   const savings = totalIncome - totalExpenses
   const spentPercent = totalIncome > 0 ? Math.min((totalExpenses / totalIncome) * 100, 100) : 0
 
@@ -1067,7 +1068,7 @@ function DashboardSection({ monthData, monthKey, categories }) {
             style={{ width: `${spentPercent}%` }} />
         </div>
         <div className="flex justify-between mt-2 text-xs text-slate-500">
-          <span>Spent: {fmt(totalExpenses)}</span>
+          <span>Spent: {fmt(totalExpenses)} <span className="text-slate-600">({fmt(totalFixed)} fixed + {fmt(totalDaily)} daily)</span></span>
           <span>Income: {fmt(totalIncome)}</span>
         </div>
       </div>
