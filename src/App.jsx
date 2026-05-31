@@ -105,6 +105,13 @@ function loadTimestamp() {
 }
 function saveTimestamp(ts) { localStorage.setItem('financeDataTimestamp', String(ts)) }
 
+function hasFinanceData(data) {
+  return Object.keys(data).some(k => {
+    const md = data[k]
+    return md.members?.length > 0 || md.fixedExpenses?.length > 0 || md.dailyExpenses?.length > 0
+  })
+}
+
 function getMonthData(data, key) {
   return data[key] || { members: [], fixedExpenses: [], dailyExpenses: [] }
 }
@@ -2296,18 +2303,6 @@ export default function App() {
     return unsub
   }, [])
 
-  // Reset cloud-load gate when app resumes from background so we
-  // always pull the latest snapshot before allowing any local pushes.
-  useEffect(() => {
-    function onVisible() {
-      if (document.visibilityState === 'visible' && user) {
-        initialCloudLoadDone.current = false
-      }
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [user])
-
   // Firestore real-time listener — attach when signed in
   useEffect(() => {
     if (firestoreUnsub.current) { firestoreUnsub.current(); firestoreUnsub.current = null }
@@ -2317,14 +2312,17 @@ export default function App() {
     const docRef = doc(db, 'users', user.uid)
     firestoreUnsub.current = onSnapshot(docRef, (snap) => {
       if (skipNextFirestoreUpdate.current) { skipNextFirestoreUpdate.current = false; initialCloudLoadDone.current = true; return }
+
+      const localTs = localTimestampRef.current
+      const localData = loadData()
+
       if (snap.exists()) {
         const snapData = snap.data()
         const cloudTs = snapData?.lastModified || 0
-        const localTs = localTimestampRef.current
         const cloudData = snapData?.financeData
-        const isFirstSync = !initialCloudLoadDone.current
         const hasCloudData = cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0
-        if (hasCloudData && (isFirstSync || cloudTs >= localTs)) {
+
+        if (hasCloudData && cloudTs >= localTs) {
           const { data: migrated } = migrateExpensesToCorrectMonths(cloudData)
           isApplyingCloudData.current = true
           setData(migrated)
@@ -2332,6 +2330,13 @@ export default function App() {
           localTimestampRef.current = cloudTs
           saveTimestamp(cloudTs)
           setSyncStatus('synced')
+        } else if (localTs > cloudTs || (!hasCloudData && hasFinanceData(localData))) {
+          skipNextFirestoreUpdate.current = true
+          setSyncing(true)
+          const ts = localTs || Date.now()
+          setDoc(docRef, { financeData: localData, lastModified: ts }, { merge: true })
+            .then(() => { setSyncStatus('synced'); setSyncing(false) })
+            .catch((err) => { console.error('Firestore sync failed:', err); setSyncStatus('error'); setSyncing(false) })
         }
         if (snapData?.categories && !skipNextCategoryUpdate.current) {
           const cloudCustom = snapData.categories.filter(c => !c.builtIn)
@@ -2339,9 +2344,16 @@ export default function App() {
           setCategories([...DEFAULT_CATEGORIES, ...cloudCustom])
         }
         skipNextCategoryUpdate.current = false
+      } else if (hasFinanceData(localData)) {
+        skipNextFirestoreUpdate.current = true
+        setSyncing(true)
+        const ts = localTs || Date.now()
+        setDoc(docRef, { financeData: localData, lastModified: ts }, { merge: true })
+          .then(() => { setSyncStatus('synced'); setSyncing(false) })
+          .catch((err) => { console.error('Firestore sync failed:', err); setSyncStatus('error'); setSyncing(false) })
       }
       initialCloudLoadDone.current = true
-    }, () => { setSyncStatus('error'); initialCloudLoadDone.current = true })
+    }, (err) => { console.error('Firestore listener failed:', err); setSyncStatus('error'); initialCloudLoadDone.current = true })
 
     return () => { if (firestoreUnsub.current) { firestoreUnsub.current(); firestoreUnsub.current = null } }
   }, [user])
@@ -2371,7 +2383,7 @@ export default function App() {
       const docRef = doc(db, 'users', user.uid)
       setDoc(docRef, { financeData: data, lastModified: now }, { merge: true })
         .then(() => { setSyncStatus('synced'); setSyncing(false) })
-        .catch(() => { setSyncStatus('error'); setSyncing(false) })
+        .catch((err) => { console.error('Firestore sync failed:', err); setSyncStatus('error'); setSyncing(false) })
     }
   }, [data, user])
 
@@ -2406,10 +2418,7 @@ export default function App() {
       const localTs = localTimestampRef.current
 
       const localData = loadData()
-      const hasLocalData = Object.keys(localData).some(k => {
-        const md = localData[k]
-        return md.members?.length > 0 || md.fixedExpenses?.length > 0 || md.dailyExpenses?.length > 0
-      })
+      const hasLocalData = hasFinanceData(localData)
       const localCustomCats = loadCustomCategories()
 
       if (cloudTs >= localTs && cloudPayload?.financeData) {
