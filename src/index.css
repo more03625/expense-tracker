@@ -88,3 +88,27 @@ a:active {
 button:disabled:active {
   transform: none;
 }
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  header,
+  nav,
+  aside {
+    display: none !important;
+  }
+
+  .annual-dashboard-report {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .annual-dashboard-report * {
+    color: #111 !important;
+    background: white !important;
+    border-color: #ccc !important;
+  }
+}

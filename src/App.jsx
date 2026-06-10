@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import AnnualDashboard from './pages/AnnualDashboard'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
@@ -11,7 +13,7 @@ import {
   Menu, Database, HardDrive, LogIn, LogOut, Cloud, CloudOff, Loader2,
   Shield, Info, ArrowLeftRight, GraduationCap, Shirt, Plane, Gift,
   Wrench, Smartphone, PiggyBank, Utensils, Droplets, Wifi, MessageSquare,
-  Volume2, VolumeX
+  Volume2, VolumeX, BarChart3
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { auth, googleProvider, db } from './firebase'
@@ -2187,6 +2189,7 @@ function AboutPage() {
 // ══════════════════════════════════════════════════════════════════════
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'annual', label: 'Annual Dashboard', icon: BarChart3 },
   { id: 'members', label: 'Income', icon: Users },
   { id: 'fixed', label: 'Fixed', icon: CreditCard },
   { id: 'daily', label: 'Daily', icon: ShoppingCart },
@@ -2250,6 +2253,10 @@ function haptic(ms = 8) {
 }
 
 export default function App() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isAnnualPage = location.pathname === '/annual-dashboard'
+
   useEffect(() => {
     function onTap(e) {
       if (e.target.closest(HAPTIC_SELECTORS)) haptic()
@@ -2257,6 +2264,16 @@ export default function App() {
     document.addEventListener('pointerdown', onTap, { passive: true })
     return () => document.removeEventListener('pointerdown', onTap)
   }, [])
+
+  function navigateToTab(tabId) {
+    if (tabId === 'annual') {
+      navigate('/annual-dashboard')
+    } else {
+      if (isAnnualPage) navigate('/')
+      setActiveTab(tabId)
+    }
+    setSidebarOpen(false)
+  }
 
   const [migrationInfo] = useState(() => {
     const raw = loadData()
@@ -2293,6 +2310,8 @@ export default function App() {
   const prevDataRef = useRef(data)
 
   const monthData = getMonthData(data, currentMonth)
+  const effectiveActiveTab = isAnnualPage ? 'annual' : activeTab
+  const annualCategories = categories.map(({ id, name, color }) => ({ id, name, color }))
 
   // Auth listener
   useEffect(() => {
@@ -2660,46 +2679,22 @@ export default function App() {
           <nav className="flex-1 overflow-y-auto py-3 px-3">
             <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Navigation</p>
             {TABS.map(tab => (
-              <button key={tab.id} onClick={() => { setActiveTab(tab.id); setSidebarOpen(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${activeTab === tab.id ? 'bg-gold-500/15 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+              <button key={tab.id} onClick={() => navigateToTab(tab.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${effectiveActiveTab === tab.id ? 'bg-gold-500/15 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
                 <tab.icon className="w-4.5 h-4.5" /> {tab.label}
               </button>
             ))}
-
-            <div className="my-3 border-t border-navy-700/30" />
-            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Actions</p>
-
-            <button onClick={() => { setShowImport(true); setSidebarOpen(false) }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-emerald-400 hover:bg-emerald-500/10 transition-colors mb-0.5">
-              <Upload className="w-4.5 h-4.5" /> Import Data
-            </button>
-            <button onClick={() => { exportToCSV(monthData, currentMonth); toast('CSV exported!'); setSidebarOpen(false) }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
-              <FileText className="w-4.5 h-4.5 text-gold-400" /> Export CSV
-            </button>
-            <button onClick={() => { exportToExcel(monthData, currentMonth); toast('Excel exported!'); setSidebarOpen(false) }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
-              <FileSpreadsheet className="w-4.5 h-4.5 text-emerald-400" /> Export Excel
-            </button>
-            <button onClick={() => { exportToJSON(data, currentMonth); toast('JSON exported!'); setSidebarOpen(false) }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
-              <Database className="w-4.5 h-4.5 text-blue-400" /> Export JSON
-            </button>
-            <button onClick={() => { requestCarryOver(); setSidebarOpen(false) }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
-              <Copy className="w-4.5 h-4.5" /> Carry Over Fixed
-            </button>
           </nav>
 
           {/* Info section */}
           <nav className="px-3 pb-2">
             <p className="px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500 border-t border-navy-700/30">Info</p>
-            <button onClick={() => { setActiveTab('privacy'); setSidebarOpen(false) }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${activeTab === 'privacy' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+            <button onClick={() => { if (isAnnualPage) navigate('/'); setActiveTab('privacy'); setSidebarOpen(false) }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${effectiveActiveTab === 'privacy' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
               <Shield className="w-4.5 h-4.5" /> Privacy Policy
             </button>
-            <button onClick={() => { setActiveTab('about'); setSidebarOpen(false) }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${activeTab === 'about' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+            <button onClick={() => { if (isAnnualPage) navigate('/'); setActiveTab('about'); setSidebarOpen(false) }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${effectiveActiveTab === 'about' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
               <Info className="w-4.5 h-4.5" /> About
             </button>
 
@@ -2807,11 +2802,13 @@ export default function App() {
           </div>
 
           {/* Month Selector */}
-          <div className="flex items-center gap-2">
-            <button onClick={() => changeMonth(-1)} className="w-8 h-8 rounded-lg bg-navy-800 hover:bg-navy-700 flex items-center justify-center transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-            <span className="text-sm font-semibold text-white min-w-[140px] text-center">{monthLabel(currentMonth)}</span>
-            <button onClick={() => changeMonth(1)} className="w-8 h-8 rounded-lg bg-navy-800 hover:bg-navy-700 flex items-center justify-center transition-colors"><ChevronRightIcon className="w-4 h-4" /></button>
-          </div>
+          {!isAnnualPage && (
+            <div className="flex items-center gap-2">
+              <button onClick={() => changeMonth(-1)} className="w-8 h-8 rounded-lg bg-navy-800 hover:bg-navy-700 flex items-center justify-center transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+              <span className="text-sm font-semibold text-white min-w-[140px] text-center">{monthLabel(currentMonth)}</span>
+              <button onClick={() => changeMonth(1)} className="w-8 h-8 rounded-lg bg-navy-800 hover:bg-navy-700 flex items-center justify-center transition-colors"><ChevronRightIcon className="w-4 h-4" /></button>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center gap-2">
@@ -2850,8 +2847,8 @@ export default function App() {
         {/* Desktop Tabs */}
         <div className="max-w-5xl mx-auto px-4 hidden md:flex gap-1 -mb-px">
           {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-gold-500 text-gold-400' : 'border-transparent text-slate-400 hover:text-white'}`}>
+            <button key={tab.id} onClick={() => navigateToTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${effectiveActiveTab === tab.id ? 'border-gold-500 text-gold-400' : 'border-transparent text-slate-400 hover:text-white'}`}>
               <tab.icon className="w-4 h-4" /> {tab.label}
             </button>
           ))}
@@ -2860,22 +2857,28 @@ export default function App() {
 
       {/* Content */}
       <main className="max-w-5xl mx-auto px-4 py-6">
-        {activeTab === 'dashboard' && <DashboardSection monthData={monthData} monthKey={currentMonth} categories={categories} />}
-        {activeTab === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
-        {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} monthKey={currentMonth} />}
-        {activeTab === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} categories={categories} onAddCategory={addCategory} />}
-        {activeTab === 'privacy' && <PrivacyPolicyPage />}
-        {activeTab === 'about' && <AboutPage />}
+        {isAnnualPage ? (
+          <AnnualDashboard categories={annualCategories} financeData={data} />
+        ) : (
+          <>
+            {activeTab === 'dashboard' && <DashboardSection monthData={monthData} monthKey={currentMonth} categories={categories} />}
+            {activeTab === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
+            {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} monthKey={currentMonth} />}
+            {activeTab === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} categories={categories} onAddCategory={addCategory} />}
+            {activeTab === 'privacy' && <PrivacyPolicyPage />}
+            {activeTab === 'about' && <AboutPage />}
+          </>
+        )}
       </main>
 
       {/* Mobile Bottom Nav cmt */}
       <nav className="fixed bottom-0 left-0 right-0 md:hidden bg-navy-950/90 backdrop-blur-xl border-t border-navy-700/30 z-30">
         <div className="flex justify-around py-2">
           {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors ${activeTab === tab.id ? 'text-gold-400' : 'text-slate-500'}`}>
+            <button key={tab.id} onClick={() => navigateToTab(tab.id)}
+              className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors ${effectiveActiveTab === tab.id ? 'text-gold-400' : 'text-slate-500'}`}>
               <tab.icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium">{tab.label}</span>
+              <span className="text-[10px] font-medium">{tab.label === 'Annual Dashboard' ? 'Annual' : tab.label}</span>
             </button>
           ))}
         </div>
