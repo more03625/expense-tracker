@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://expense-tracker-03625.netlify.app/sitemap.xml

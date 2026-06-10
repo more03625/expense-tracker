@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import AnnualDashboard from './pages/AnnualDashboard'
+import SeoHead from './components/SeoHead'
+import { pathToPageKey, PAGE_TO_PATH, PATH_TO_PAGE } from './seo/pageSeo'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
@@ -2131,6 +2133,7 @@ function AboutPage() {
     { icon: CreditCard, label: 'Fixed Expenses', desc: 'Manage recurring bills like rent, EMIs, and insurance with sub-item breakdowns' },
     { icon: ShoppingCart, label: 'Daily Expenses', desc: 'Log day-to-day spending by category with sub-item support' },
     { icon: LayoutDashboard, label: 'Dashboard', desc: 'Visual overview with charts, budget progress, and savings tracking' },
+    { icon: BarChart3, label: 'Annual Dashboard', desc: 'Full financial year analysis with income vs expense trends and FY savings reports' },
     { icon: Upload, label: 'Import', desc: 'Bulk import from Excel files or JSON data' },
     { icon: Download, label: 'Export', desc: 'Download your data as CSV, Excel, or JSON' },
     { icon: Cloud, label: 'Cloud Sync', desc: 'Sign in with Google to sync across all your devices in real-time' },
@@ -2255,7 +2258,18 @@ function haptic(ms = 8) {
 export default function App() {
   const navigate = useNavigate()
   const location = useLocation()
-  const isAnnualPage = location.pathname === '/annual-dashboard'
+  const pageKey = pathToPageKey(location.pathname)
+  const isAnnualPage = pageKey === 'annual'
+
+  useEffect(() => {
+    if (location.pathname === '/dashboard') {
+      navigate('/', { replace: true })
+      return
+    }
+    if (!PATH_TO_PAGE[location.pathname]) {
+      navigate('/', { replace: true })
+    }
+  }, [location.pathname, navigate])
 
   useEffect(() => {
     function onTap(e) {
@@ -2266,12 +2280,8 @@ export default function App() {
   }, [])
 
   function navigateToTab(tabId) {
-    if (tabId === 'annual') {
-      navigate('/annual-dashboard')
-    } else {
-      if (isAnnualPage) navigate('/')
-      setActiveTab(tabId)
-    }
+    const path = PAGE_TO_PATH[tabId] || '/'
+    navigate(path)
     setSidebarOpen(false)
   }
 
@@ -2282,7 +2292,6 @@ export default function App() {
     return { moved, data: fixed }
   })
   const [data, setData] = useState(migrationInfo.data)
-  const [activeTab, setActiveTab] = useState('dashboard')
   const [currentMonth, setCurrentMonth] = useState(getMonthKey(new Date()))
   const [showImport, setShowImport] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
@@ -2310,7 +2319,6 @@ export default function App() {
   const prevDataRef = useRef(data)
 
   const monthData = getMonthData(data, currentMonth)
-  const effectiveActiveTab = isAnnualPage ? 'annual' : activeTab
   const annualCategories = categories.map(({ id, name, color }) => ({ id, name, color }))
 
   // Auth listener
@@ -2551,7 +2559,7 @@ export default function App() {
     // Auto-navigate to the month where daily expenses were added & switch to Daily tab
     if (dailyExpenses.length > 0) {
       setCurrentMonth(dailyMonth)
-      setActiveTab('daily')
+      navigate('/daily')
     }
 
     const counts = []
@@ -2586,7 +2594,7 @@ export default function App() {
     addDailyExpenses(expenses)
     const firstMonth = expenses[0].date.slice(0, 7)
     setCurrentMonth(firstMonth)
-    setActiveTab('daily')
+    navigate('/daily')
   }
 
   function handleBankStatementImport(expenses) {
@@ -2594,7 +2602,7 @@ export default function App() {
     addDailyExpenses(expenses)
     const firstMonth = expenses[0].date.slice(0, 7)
     setCurrentMonth(firstMonth)
-    setActiveTab('daily')
+    navigate('/daily')
     const months = [...new Set(expenses.map(e => e.date.slice(0, 7)))].sort()
     toast(`Bank statement imported: ${expenses.length} transaction${expenses.length !== 1 ? 's' : ''} across ${months.length} month${months.length !== 1 ? 's' : ''}`)
   }
@@ -2631,6 +2639,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-24 md:pb-8">
+      <SeoHead pageKey={pageKey} />
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       <ConfirmDialog
         open={showCarryOverConfirm}
@@ -2680,7 +2689,7 @@ export default function App() {
             <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Navigation</p>
             {TABS.map(tab => (
               <button key={tab.id} onClick={() => navigateToTab(tab.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${effectiveActiveTab === tab.id ? 'bg-gold-500/15 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${pageKey === tab.id ? 'bg-gold-500/15 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
                 <tab.icon className="w-4.5 h-4.5" /> {tab.label}
               </button>
             ))}
@@ -2689,12 +2698,12 @@ export default function App() {
           {/* Info section */}
           <nav className="px-3 pb-2">
             <p className="px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500 border-t border-navy-700/30">Info</p>
-            <button onClick={() => { if (isAnnualPage) navigate('/'); setActiveTab('privacy'); setSidebarOpen(false) }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${effectiveActiveTab === 'privacy' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+            <button onClick={() => navigateToTab('privacy')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${pageKey === 'privacy' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
               <Shield className="w-4.5 h-4.5" /> Privacy Policy
             </button>
-            <button onClick={() => { if (isAnnualPage) navigate('/'); setActiveTab('about'); setSidebarOpen(false) }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${effectiveActiveTab === 'about' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
+            <button onClick={() => navigateToTab('about')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-0.5 ${pageKey === 'about' ? 'bg-gold-500/10 text-gold-400' : 'text-slate-400 hover:bg-navy-800 hover:text-white'}`}>
               <Info className="w-4.5 h-4.5" /> About
             </button>
 
@@ -2848,7 +2857,7 @@ export default function App() {
         <div className="max-w-5xl mx-auto px-4 hidden md:flex gap-1 -mb-px">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => navigateToTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${effectiveActiveTab === tab.id ? 'border-gold-500 text-gold-400' : 'border-transparent text-slate-400 hover:text-white'}`}>
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${pageKey === tab.id ? 'border-gold-500 text-gold-400' : 'border-transparent text-slate-400 hover:text-white'}`}>
               <tab.icon className="w-4 h-4" /> {tab.label}
             </button>
           ))}
@@ -2861,12 +2870,12 @@ export default function App() {
           <AnnualDashboard categories={annualCategories} financeData={data} />
         ) : (
           <>
-            {activeTab === 'dashboard' && <DashboardSection monthData={monthData} monthKey={currentMonth} categories={categories} />}
-            {activeTab === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
-            {activeTab === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} monthKey={currentMonth} />}
-            {activeTab === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} categories={categories} onAddCategory={addCategory} />}
-            {activeTab === 'privacy' && <PrivacyPolicyPage />}
-            {activeTab === 'about' && <AboutPage />}
+            {pageKey === 'dashboard' && <DashboardSection monthData={monthData} monthKey={currentMonth} categories={categories} />}
+            {pageKey === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
+            {pageKey === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} monthKey={currentMonth} />}
+            {pageKey === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} categories={categories} onAddCategory={addCategory} />}
+            {pageKey === 'privacy' && <PrivacyPolicyPage />}
+            {pageKey === 'about' && <AboutPage />}
           </>
         )}
       </main>
@@ -2876,7 +2885,7 @@ export default function App() {
         <div className="flex justify-around py-2">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => navigateToTab(tab.id)}
-              className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors ${effectiveActiveTab === tab.id ? 'text-gold-400' : 'text-slate-500'}`}>
+              className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors ${pageKey === tab.id ? 'text-gold-400' : 'text-slate-500'}`}>
               <tab.icon className="w-5 h-5" />
               <span className="text-[10px] font-medium">{tab.label === 'Annual Dashboard' ? 'Annual' : tab.label}</span>
             </button>

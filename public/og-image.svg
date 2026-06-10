@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Finance Tracker  Personal Money Manager for Indian Households">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080d1a"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1a1f3a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="80" y="80" width="88" height="88" rx="20" fill="#fbbf24"/>
+  <text x="124" y="138" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="42" fill="#0f172a">¹</text>
+  <text x="200" y="130" font-family="Inter, Arial, sans-serif" font-size="56" font-weight="700" fill="#ffffff">Finance Tracker</text>
+  <text x="200" y="185" font-family="Inter, Arial, sans-serif" font-size="28" fill="#94a3b8">Personal Money Manager for Indian Households</text>
+  <text x="200" y="260" font-family="Inter, Arial, sans-serif" font-size="24" fill="#fbbf24">Income · Fixed Bills · Daily Expenses · Annual FY Reports</text>
+  <text x="200" y="540" font-family="Inter, Arial, sans-serif" font-size="22" fill="#64748b">Free browser app · Works offline · Made in India</text>
+</svg>
