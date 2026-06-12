@@ -22,6 +22,9 @@ import { auth, googleProvider, db } from './firebase'
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore'
 import UPIImportModal from './components/UPIImportModal'
+import InvestmentsSection from './components/InvestmentsSection'
+import { computeMonthMetrics } from './utils/financeMetrics'
+import { sanitizeForFirestore } from './utils/firestoreSanitize'
 import { parseBankStatement } from './importers/bank/registry'
 import { checkDuplicate } from './importers/bank/utils'
 import { parseSMS } from './importers/smsParser'
@@ -112,12 +115,13 @@ function saveTimestamp(ts) { localStorage.setItem('financeDataTimestamp', String
 function hasFinanceData(data) {
   return Object.keys(data).some(k => {
     const md = data[k]
-    return md.members?.length > 0 || md.fixedExpenses?.length > 0 || md.dailyExpenses?.length > 0
+    return md.members?.length > 0 || md.fixedExpenses?.length > 0 || md.dailyExpenses?.length > 0 || md.investments?.length > 0
   })
 }
 
 function getMonthData(data, key) {
-  return data[key] || { members: [], fixedExpenses: [], dailyExpenses: [] }
+  const md = data[key] || { members: [], fixedExpenses: [], dailyExpenses: [], investments: [] }
+  return { ...md, investments: md.investments || [] }
 }
 
 // ── Toast System ──────────────────────────────────────────────────────
@@ -1025,13 +1029,14 @@ function DailyExpensesSection({ expenses, onUpdate, onAddExpenses, toast, monthK
 // DASHBOARD SECTION
 // ══════════════════════════════════════════════════════════════════════
 function DashboardSection({ monthData, monthKey, categories }) {
-  const { members = [], fixedExpenses = [], dailyExpenses = [] } = monthData
-  const totalIncome = members.reduce((s, m) => s + Number(m.salary), 0)
-  const totalFixed = fixedExpenses.reduce((s, e) => s + Number(e.amount), 0)
-  const totalDaily = dailyExpenses.reduce((s, e) => s + Number(e.amount), 0)
-  const totalExpenses = totalFixed + totalDaily
-  const savings = totalIncome - totalExpenses
+  const { members = [], fixedExpenses = [], dailyExpenses = [], investments = [] } = monthData
+  const metrics = computeMonthMetrics({ members, fixedExpenses, dailyExpenses, investments })
+  const { income: totalIncome, fixed: totalFixed, daily: totalDaily, totalExpense: totalExpenses, grossSavings, totalInvestments, cashRemaining } = metrics
   const spentPercent = totalIncome > 0 ? Math.min((totalExpenses / totalIncome) * 100, 100) : 0
+  const allocationTotal = totalIncome > 0 ? totalIncome : 1
+  const expenseShare = (totalExpenses / allocationTotal) * 100
+  const investShare = (totalInvestments / allocationTotal) * 100
+  const cashShare = Math.max(0, (cashRemaining / allocationTotal) * 100)
 
   const categoryData = {}
   dailyExpenses.forEach(e => {
@@ -1061,11 +1066,12 @@ function DashboardSection({ monthData, monthKey, categories }) {
         <p className="text-sm text-slate-400">{monthLabel(monthKey)} Overview</p>
       </div>
 
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <StatCard label="Total Income" value={fmt(totalIncome)} icon={TrendingUp} color="green" sub={`${members.length} member${members.length !== 1 ? 's' : ''}`} />
         <StatCard label="Fixed Expenses" value={fmt(totalFixed)} icon={CreditCard} color="red" sub={`${fixedExpenses.filter(e => e.paid).length}/${fixedExpenses.length} paid`} />
         <StatCard label="Daily Expenses" value={fmt(totalDaily)} icon={ShoppingCart} color="blue" sub={`${dailyExpenses.length} transactions`} />
-        <StatCard label="Savings" value={fmt(savings)} icon={Wallet} color={savings >= 0 ? 'gold' : 'red'} sub={savings >= 0 ? 'Looking good!' : 'Over budget!'} />
+        <StatCard label="Investments" value={fmt(totalInvestments)} icon={PiggyBank} color="purple" sub={`${investments.length} allocation${investments.length !== 1 ? 's' : ''}`} />
+        <StatCard label="Cash Remaining" value={fmt(cashRemaining)} icon={Wallet} color={cashRemaining >= 0 ? 'gold' : 'red'} sub={`Gross ${fmt(grossSavings)} · Invested ${fmt(totalInvestments)}`} />
       </div>
 
       {/* Spending Progress */}
@@ -1083,6 +1089,22 @@ function DashboardSection({ monthData, monthKey, categories }) {
           <span>Income: {fmt(totalIncome)}</span>
         </div>
       </div>
+
+      {totalIncome > 0 && (
+        <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
+          <p className="text-sm font-medium text-slate-300 mb-3">Money Allocation</p>
+          <div className="w-full bg-navy-800 rounded-full h-3 overflow-hidden flex">
+            <div className="h-full bg-red-500/80 transition-all duration-700" style={{ width: `${Math.min(expenseShare, 100)}%` }} title="Expenses" />
+            <div className="h-full bg-purple-500/80 transition-all duration-700" style={{ width: `${Math.min(investShare, 100)}%` }} title="Investments" />
+            <div className="h-full bg-gold-500/80 transition-all duration-700" style={{ width: `${Math.min(cashShare, 100)}%` }} title="Cash Remaining" />
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
+            <span className="text-red-400">Expenses {expenseShare.toFixed(1)}%</span>
+            <span className="text-purple-400">Investments {investShare.toFixed(1)}%</span>
+            <span className="text-gold-400">Cash {cashShare.toFixed(1)}%</span>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Category Breakdown */}
@@ -1168,34 +1190,40 @@ function DashboardSection({ monthData, monthKey, categories }) {
 // EXPORT SECTION
 // ══════════════════════════════════════════════════════════════════════
 function exportToCSV(monthData, monthKey) {
-  const { members = [], fixedExpenses = [], dailyExpenses = [] } = monthData
-  const totalIncome = members.reduce((s, m) => s + Number(m.salary), 0)
-  const totalFixed = fixedExpenses.reduce((s, e) => s + Number(e.amount), 0)
-  const totalDaily = dailyExpenses.reduce((s, e) => s + Number(e.amount), 0)
+  const { members = [], fixedExpenses = [], dailyExpenses = [], investments = [] } = monthData
+  const metrics = computeMonthMetrics({ members, fixedExpenses, dailyExpenses, investments })
 
   let csv = '=== INCOME MEMBERS ===\nName,Amount\n'
   members.forEach(m => csv += `"${m.name}",${m.salary}\n`)
-  csv += `Total Income,${totalIncome}\n\n`
+  csv += `Total Income,${metrics.income}\n\n`
 
   csv += '=== FIXED SPENDINGS ===\nName,Amount,Due Date,Description,Paid,Sub-items\n'
   fixedExpenses.forEach(e => {
     const subs = (e.subItems || []).map(s => `${s.name}: ₹${s.amount}`).join('; ')
     csv += `"${e.name}",${e.amount},${e.dueDate},"${e.description || ''}",${e.paid ? 'Yes' : 'No'},"${subs}"\n`
   })
-  csv += `Total Fixed,,${totalFixed},,\n\n`
+  csv += `Total Fixed,,${metrics.fixed},,\n\n`
 
   csv += '=== DAILY EXPENSES ===\nDate,Title,Description,Category,Amount,Payment Method,Sub-items\n'
   dailyExpenses.sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
     const subs = (e.subItems || []).map(s => `${s.name}: ₹${s.amount}`).join('; ')
     csv += `${e.date},"${e.title}","${e.description || ''}",${e.category},${e.amount},${e.paymentMethod},"${subs}"\n`
   })
-  csv += `Total Daily,,,,${totalDaily},\n\n`
+  csv += `Total Daily,,,,${metrics.daily},\n\n`
+
+  csv += '=== INVESTMENTS ===\nName,Type,Amount,Platform,Note\n'
+  investments.forEach(i => {
+    csv += `"${i.name}",${i.type},${i.amount},"${i.platform || ''}","${i.note || ''}"\n`
+  })
+  csv += `Total Investments,,${metrics.totalInvestments},,\n\n`
 
   csv += '=== SUMMARY ===\n'
-  csv += `Total Income,${totalIncome}\n`
-  csv += `Fixed Expenses,${totalFixed}\n`
-  csv += `Daily Expenses,${totalDaily}\n`
-  csv += `Savings,${totalIncome - totalFixed - totalDaily}\n`
+  csv += `Total Income,${metrics.income}\n`
+  csv += `Fixed Expenses,${metrics.fixed}\n`
+  csv += `Daily Expenses,${metrics.daily}\n`
+  csv += `Gross Savings,${metrics.grossSavings}\n`
+  csv += `Investments,${metrics.totalInvestments}\n`
+  csv += `Cash Remaining,${metrics.cashRemaining}\n`
 
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
@@ -2132,6 +2160,7 @@ function AboutPage() {
     { icon: Users, label: 'Income Members', desc: 'Track household earning members and monthly salaries' },
     { icon: CreditCard, label: 'Fixed Expenses', desc: 'Manage recurring bills like rent, EMIs, and insurance with sub-item breakdowns' },
     { icon: ShoppingCart, label: 'Daily Expenses', desc: 'Log day-to-day spending by category with sub-item support' },
+    { icon: PiggyBank, label: 'Investments', desc: 'Track monthly SIPs and allocations in MF, stocks, FD, PPF, and more — separate from expenses' },
     { icon: LayoutDashboard, label: 'Dashboard', desc: 'Visual overview with charts, budget progress, and savings tracking' },
     { icon: BarChart3, label: 'Annual Dashboard', desc: 'Full financial year analysis with income vs expense trends and FY savings reports' },
     { icon: Upload, label: 'Import', desc: 'Bulk import from Excel files or JSON data' },
@@ -2192,10 +2221,11 @@ function AboutPage() {
 // ══════════════════════════════════════════════════════════════════════
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'annual', label: 'Annual Dashboard', icon: BarChart3 },
   { id: 'members', label: 'Income', icon: Users },
   { id: 'fixed', label: 'Fixed', icon: CreditCard },
   { id: 'daily', label: 'Daily', icon: ShoppingCart },
+  { id: 'investments', label: 'Investments', icon: PiggyBank },
+  { id: 'annual', label: 'Annual Dashboard', icon: BarChart3 },
 ]
 
 function migrateExpensesToCorrectMonths(data) {
@@ -2217,7 +2247,7 @@ function migrateExpensesToCorrectMonths(data) {
     if (misplaced.length > 0) {
       migrated[monthKey] = { ...md, dailyExpenses: keep }
       for (const { exp, correctMonth } of misplaced) {
-        const target = migrated[correctMonth] || { members: [], fixedExpenses: [], dailyExpenses: [] }
+        const target = migrated[correctMonth] || { members: [], fixedExpenses: [], dailyExpenses: [], investments: [] }
         migrated[correctMonth] = { ...target, dailyExpenses: [...target.dailyExpenses, exp] }
         moved++
       }
@@ -2361,7 +2391,7 @@ export default function App() {
           skipNextFirestoreUpdate.current = true
           setSyncing(true)
           const ts = localTs || Date.now()
-          setDoc(docRef, { financeData: localData, lastModified: ts }, { merge: true })
+          setDoc(docRef, { financeData: sanitizeForFirestore(localData), lastModified: ts }, { merge: true })
             .then(() => { setSyncStatus('synced'); setSyncing(false) })
             .catch((err) => { console.error('Firestore sync failed:', err); setSyncStatus('error'); setSyncing(false) })
         }
@@ -2375,7 +2405,7 @@ export default function App() {
         skipNextFirestoreUpdate.current = true
         setSyncing(true)
         const ts = localTs || Date.now()
-        setDoc(docRef, { financeData: localData, lastModified: ts }, { merge: true })
+        setDoc(docRef, { financeData: sanitizeForFirestore(localData), lastModified: ts }, { merge: true })
           .then(() => { setSyncStatus('synced'); setSyncing(false) })
           .catch((err) => { console.error('Firestore sync failed:', err); setSyncStatus('error'); setSyncing(false) })
       }
@@ -2408,7 +2438,7 @@ export default function App() {
       skipNextFirestoreUpdate.current = true
       setSyncing(true)
       const docRef = doc(db, 'users', user.uid)
-      setDoc(docRef, { financeData: data, lastModified: now }, { merge: true })
+      setDoc(docRef, { financeData: sanitizeForFirestore(data), lastModified: now }, { merge: true })
         .then(() => { setSyncStatus('synced'); setSyncing(false) })
         .catch((err) => { console.error('Firestore sync failed:', err); setSyncStatus('error'); setSyncing(false) })
     }
@@ -2465,7 +2495,7 @@ export default function App() {
         const now = Date.now()
         localTimestampRef.current = now
         saveTimestamp(now)
-        const payload = { financeData: localData, lastModified: now }
+        const payload = { financeData: sanitizeForFirestore(localData), lastModified: now }
         if (localCustomCats.length > 0) {
           payload.categories = [...DEFAULT_CATEGORIES, ...localCustomCats].map(({ icon, ...rest }) => rest)
         }
@@ -2527,7 +2557,7 @@ export default function App() {
       }
 
       function ensureMonth(mk) {
-        if (!updated[mk]) updated[mk] = { members: [], fixedExpenses: [], dailyExpenses: [] }
+        if (!updated[mk]) updated[mk] = { members: [], fixedExpenses: [], dailyExpenses: [], investments: [] }
       }
 
       // Members & fixed go to the currently viewed month
@@ -2579,7 +2609,8 @@ export default function App() {
         updated[mk] = {
           members: (monthVal.members || []).map(m => ({ ...m, id: m.id || genId() })),
           fixedExpenses: (monthVal.fixedExpenses || []).map(e => ({ ...e, id: e.id || genId() })),
-          dailyExpenses: (monthVal.dailyExpenses || []).map(e => ({ ...e, id: e.id || genId() }))
+          dailyExpenses: (monthVal.dailyExpenses || []).map(e => ({ ...e, id: e.id || genId() })),
+          investments: (monthVal.investments || []).map(i => ({ ...i, id: i.id || genId() })),
         }
       }
       return updated
@@ -2874,6 +2905,7 @@ export default function App() {
             {pageKey === 'members' && <MembersSection members={monthData.members} onUpdate={v => updateMonth(currentMonth, 'members', v)} toast={toast} />}
             {pageKey === 'fixed' && <FixedExpensesSection expenses={monthData.fixedExpenses} onUpdate={v => updateMonth(currentMonth, 'fixedExpenses', v)} toast={toast} monthKey={currentMonth} />}
             {pageKey === 'daily' && <DailyExpensesSection expenses={monthData.dailyExpenses} onUpdate={v => updateMonth(currentMonth, 'dailyExpenses', v)} onAddExpenses={addDailyExpenses} toast={toast} monthKey={currentMonth} categories={categories} onAddCategory={addCategory} />}
+            {pageKey === 'investments' && <InvestmentsSection investments={monthData.investments} onUpdate={v => updateMonth(currentMonth, 'investments', v)} toast={toast} />}
             {pageKey === 'privacy' && <PrivacyPolicyPage />}
             {pageKey === 'about' && <AboutPage />}
           </>
@@ -2887,7 +2919,7 @@ export default function App() {
             <button key={tab.id} onClick={() => navigateToTab(tab.id)}
               className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors ${pageKey === tab.id ? 'text-gold-400' : 'text-slate-500'}`}>
               <tab.icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium">{tab.label === 'Annual Dashboard' ? 'Annual' : tab.label}</span>
+              <span className="text-[10px] font-medium">{tab.label === 'Annual Dashboard' ? 'Annual' : tab.label === 'Investments' ? 'Invest' : tab.label}</span>
             </button>
           ))}
         </div>

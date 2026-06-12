@@ -72,7 +72,7 @@ export default function AnnualDashboard({ categories, financeData }: AnnualDashb
       </div>
 
       <SummaryCards summary={summary} previousYearComparison={previousYearComparison} />
-      <FinancialHealthSection savingsRate={summary.savingsRate} />
+      <FinancialHealthSection savingsRate={summary.savingsRate} investmentRate={summary.investmentRate} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <MonthlyOverviewChart monthlyBreakdown={summary.monthlyBreakdown} />

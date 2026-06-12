@@ -21,10 +21,13 @@ export default function MonthlyOverviewChart({ monthlyBreakdown }: MonthlyOvervi
     Income: m.income,
     'Fixed Expense': m.fixedExpense,
     'Daily Expense': m.dailyExpense,
-    Savings: m.savings,
+    Investments: m.investment,
+    'Cash Remaining': m.savings,
   }))
 
-  const hasData = chartData.some(d => d.Income > 0 || d['Fixed Expense'] > 0 || d['Daily Expense'] > 0)
+  const hasData = chartData.some(d =>
+    d.Income > 0 || d['Fixed Expense'] > 0 || d['Daily Expense'] > 0 || d.Investments > 0,
+  )
 
   return (
     <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
@@ -45,7 +48,8 @@ export default function MonthlyOverviewChart({ monthlyBreakdown }: MonthlyOvervi
             <Bar dataKey="Income" fill="#22c55e" radius={[4, 4, 0, 0]} />
             <Bar dataKey="Fixed Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
             <Bar dataKey="Daily Expense" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Savings" fill="#fbbf24" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Investments" fill="#a855f7" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Cash Remaining" fill="#fbbf24" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       ) : (

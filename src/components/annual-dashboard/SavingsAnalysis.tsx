@@ -21,30 +21,37 @@ export default function SavingsAnalysis({ summary }: SavingsAnalysisProps) {
     lowestSavingsMonth,
     averageMonthlySavings,
     expenseRatio,
+    investmentRate,
+    totalInvestments,
   } = summary
 
   return (
     <div className="space-y-4">
       <p className="text-sm font-medium text-slate-300">Savings Analysis</p>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <AnalysisCard
-          label="Highest Savings Month"
+          label="Highest Cash Remaining"
           value={highestSavingsMonth ? fmt(highestSavingsMonth.savings) : '—'}
           sub={highestSavingsMonth?.monthLabel}
         />
         <AnalysisCard
-          label="Lowest Savings Month"
+          label="Lowest Cash Remaining"
           value={lowestSavingsMonth ? fmt(lowestSavingsMonth.savings) : '—'}
           sub={lowestSavingsMonth?.monthLabel}
         />
         <AnalysisCard
-          label="Average Monthly Savings"
+          label="Avg Monthly Cash Remaining"
           value={fmt(averageMonthlySavings)}
         />
         <AnalysisCard
           label="Total Expense Ratio"
           value={fmtPercent(expenseRatio)}
           sub="(Fixed + Daily) / Income"
+        />
+        <AnalysisCard
+          label="Investment Rate"
+          value={fmtPercent(investmentRate)}
+          sub={totalInvestments > 0 ? fmt(totalInvestments) + ' invested' : 'No investments logged'}
         />
       </div>
     </div>

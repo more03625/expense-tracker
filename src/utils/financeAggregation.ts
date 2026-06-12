@@ -1,45 +1,35 @@
 import type { FinanceData, MonthData, AnnualSummary, MonthlyBreakdown } from '../types/finance'
+import { computeMonthMetrics } from './financeMetrics'
 import { getMonthKeysForFY, getMonthShortLabel, getMonthFullLabel } from './financeYear'
 
-const EMPTY_MONTH: MonthData = { members: [], fixedExpenses: [], dailyExpenses: [] }
+const EMPTY_MONTH: MonthData = { members: [], fixedExpenses: [], dailyExpenses: [], investments: [] }
 
 export function getMonthData(data: FinanceData, key: string): MonthData {
-  return data[key] || EMPTY_MONTH
-}
-
-function sumIncome(md: MonthData): number {
-  return md.members.reduce((s, m) => s + Number(m.salary), 0)
-}
-
-function sumFixed(md: MonthData): number {
-  return md.fixedExpenses.reduce((s, e) => s + Number(e.amount), 0)
-}
-
-function sumDaily(md: MonthData): number {
-  return md.dailyExpenses.reduce((s, e) => s + Number(e.amount), 0)
+  const md = data[key] || EMPTY_MONTH
+  return {
+    ...md,
+    investments: md.investments || [],
+  }
 }
 
 export function aggregateFinancialYear(data: FinanceData, fyStartYear: number): AnnualSummary {
   const monthKeys = getMonthKeysForFY(fyStartYear)
   const monthlyBreakdown: MonthlyBreakdown[] = monthKeys.map(monthKey => {
-    const md = getMonthData(data, monthKey)
-    const income = sumIncome(md)
-    const fixedExpense = sumFixed(md)
-    const dailyExpense = sumDaily(md)
-    const totalExpense = fixedExpense + dailyExpense
-    const savings = income - totalExpense
-    const savingsPercent = income > 0 ? (savings / income) * 100 : 0
+    const metrics = computeMonthMetrics(getMonthData(data, monthKey))
 
     return {
       monthKey,
       monthLabel: getMonthFullLabel(monthKey),
       monthShort: getMonthShortLabel(monthKey),
-      income,
-      fixedExpense,
-      dailyExpense,
-      totalExpense,
-      savings,
-      savingsPercent,
+      income: metrics.income,
+      fixedExpense: metrics.fixed,
+      dailyExpense: metrics.daily,
+      totalExpense: metrics.totalExpense,
+      investment: metrics.totalInvestments,
+      grossSavings: metrics.grossSavings,
+      savings: metrics.cashRemaining,
+      savingsPercent: metrics.income > 0 ? (metrics.cashRemaining / metrics.income) * 100 : 0,
+      investmentPercent: metrics.investmentRatio,
     }
   })
 
@@ -47,8 +37,11 @@ export function aggregateFinancialYear(data: FinanceData, fyStartYear: number): 
   const totalFixed = monthlyBreakdown.reduce((s, m) => s + m.fixedExpense, 0)
   const totalDaily = monthlyBreakdown.reduce((s, m) => s + m.dailyExpense, 0)
   const totalExpense = totalFixed + totalDaily
-  const totalSavings = totalIncome - totalExpense
-  const savingsRate = totalIncome > 0 ? (totalSavings / totalIncome) * 100 : 0
+  const totalInvestments = monthlyBreakdown.reduce((s, m) => s + m.investment, 0)
+  const totalGrossSavings = totalIncome - totalExpense
+  const totalSavings = totalGrossSavings - totalInvestments
+  const savingsRate = totalIncome > 0 ? (totalGrossSavings / totalIncome) * 100 : 0
+  const investmentRate = totalIncome > 0 ? (totalInvestments / totalIncome) * 100 : 0
   const expenseRatio = totalIncome > 0 ? (totalExpense / totalIncome) * 100 : 0
 
   const categoryMap: Record<string, number> = {}
@@ -65,7 +58,9 @@ export function aggregateFinancialYear(data: FinanceData, fyStartYear: number): 
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
 
-  const monthsWithData = monthlyBreakdown.filter(m => m.income > 0 || m.totalExpense > 0)
+  const monthsWithData = monthlyBreakdown.filter(
+    m => m.income > 0 || m.totalExpense > 0 || m.investment > 0,
+  )
   const highestSavingsMonth = monthsWithData.length
     ? monthsWithData.reduce((best, m) => (m.savings > best.savings ? m : best))
     : null
@@ -81,8 +76,11 @@ export function aggregateFinancialYear(data: FinanceData, fyStartYear: number): 
     totalFixed,
     totalDaily,
     totalExpense,
+    totalInvestments,
+    totalGrossSavings,
     totalSavings,
     savingsRate,
+    investmentRate,
     expenseRatio,
     monthlyBreakdown,
     categoryBreakdown,
@@ -106,9 +104,11 @@ export interface YoYComparison {
   incomeChange: number
   expenseChange: number
   savingsChange: number
+  investmentChange: number
   prevIncome: number
   prevExpense: number
   prevSavings: number
+  prevInvestments: number
 }
 
 export function compareWithPreviousFY(
@@ -117,21 +117,23 @@ export function compareWithPreviousFY(
 ): YoYComparison | null {
   const current = aggregateFinancialYear(data, currentFYStart)
   const prev = aggregateFinancialYear(data, currentFYStart - 1)
-  if (prev.totalIncome === 0 && prev.totalExpense === 0) return null
+  if (prev.totalIncome === 0 && prev.totalExpense === 0 && prev.totalInvestments === 0) return null
 
   return {
     incomeChange: current.totalIncome - prev.totalIncome,
     expenseChange: current.totalExpense - prev.totalExpense,
     savingsChange: current.totalSavings - prev.totalSavings,
+    investmentChange: current.totalInvestments - prev.totalInvestments,
     prevIncome: prev.totalIncome,
     prevExpense: prev.totalExpense,
     prevSavings: prev.totalSavings,
+    prevInvestments: prev.totalInvestments,
   }
 }
 
 export function generateInsights(summary: AnnualSummary): string[] {
   const insights: string[] = []
-  const { monthlyBreakdown, savingsRate, totalIncome } = summary
+  const { monthlyBreakdown, savingsRate, investmentRate, totalIncome, totalInvestments } = summary
 
   const withIncome = monthlyBreakdown.filter(m => m.income > 0)
   if (withIncome.length > 0) {
@@ -146,15 +148,19 @@ export function generateInsights(summary: AnnualSummary): string[] {
   }
 
   if (summary.highestSavingsMonth) {
-    insights.push(`Best savings month was ${summary.highestSavingsMonth.monthLabel.split(' ')[0]} (${fmtShort(summary.highestSavingsMonth.savings)}).`)
+    insights.push(`Best cash remaining month was ${summary.highestSavingsMonth.monthLabel.split(' ')[0]} (${fmtShort(summary.highestSavingsMonth.savings)}).`)
   }
 
-  if (summary.lowestSavingsMonth && summary.lowestSavingsMonth.savings < summary.highestSavingsMonth!.savings) {
-    insights.push(`Lowest savings month was ${summary.lowestSavingsMonth.monthLabel.split(' ')[0]} (${fmtShort(summary.lowestSavingsMonth.savings)}).`)
+  if (summary.lowestSavingsMonth && summary.highestSavingsMonth && summary.lowestSavingsMonth.savings < summary.highestSavingsMonth.savings) {
+    insights.push(`Lowest cash remaining month was ${summary.lowestSavingsMonth.monthLabel.split(' ')[0]} (${fmtShort(summary.lowestSavingsMonth.savings)}).`)
   }
 
   if (totalIncome > 0) {
-    insights.push(`Average monthly savings rate is ${savingsRate.toFixed(1)}%.`)
+    insights.push(`Average gross savings rate is ${savingsRate.toFixed(1)}%.`)
+  }
+
+  if (totalInvestments > 0) {
+    insights.push(`You invested ${fmtShort(totalInvestments)} this FY (${investmentRate.toFixed(1)}% of income).`)
   }
 
   const fixedShare = summary.totalExpense > 0
@@ -164,9 +170,9 @@ export function generateInsights(summary: AnnualSummary): string[] {
 
   const monthsInDeficit = monthlyBreakdown.filter(m => m.savings < 0).length
   if (monthsInDeficit > 0) {
-    insights.push(`${monthsInDeficit} month${monthsInDeficit !== 1 ? 's' : ''} ended with expenses exceeding income.`)
-  } else if (withExpense.length > 0) {
-    insights.push('Every month with recorded expenses stayed within income.')
+    insights.push(`${monthsInDeficit} month${monthsInDeficit !== 1 ? 's' : ''} ended with investments exceeding gross savings.`)
+  } else if (withExpense.length > 0 || totalInvestments > 0) {
+    insights.push('Cash remaining stayed positive in every month with recorded activity.')
   }
 
   return insights.slice(0, 6)

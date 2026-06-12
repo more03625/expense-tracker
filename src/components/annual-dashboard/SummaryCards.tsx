@@ -1,4 +1,4 @@
-import { TrendingUp, CreditCard, ShoppingCart, Wallet } from 'lucide-react'
+import { TrendingUp, CreditCard, ShoppingCart, Wallet, PiggyBank } from 'lucide-react'
 import type { AnnualSummary } from '../../types/finance'
 import type { YoYComparison } from '../../utils/financeAggregation'
 import { fmt } from '../../utils/financeFormat'
@@ -59,56 +59,33 @@ function ChangeIndicator({ change, label }: { change: number; label: string }) {
 }
 
 export default function SummaryCards({ summary, previousYearComparison }: SummaryCardsProps) {
-  const { totalIncome, totalFixed, totalDaily, totalSavings } = summary
-  const savingsColor: StatColor = totalSavings >= 0 ? 'gold' : 'red'
+  const { totalIncome, totalFixed, totalDaily, totalInvestments, totalGrossSavings, totalSavings } = summary
+  const cashColor: StatColor = totalSavings >= 0 ? 'gold' : 'red'
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          emoji="💰"
-          label="Total Income"
-          value={fmt(totalIncome)}
-          icon={TrendingUp}
-          color="green"
-          sub={previousYearComparison ? undefined : 'Full financial year'}
-        />
-        <StatCard
-          emoji="📄"
-          label="Total Fixed Expenses"
-          value={fmt(totalFixed)}
-          icon={CreditCard}
-          color="red"
-        />
-        <StatCard
-          emoji="🛒"
-          label="Total Daily Expenses"
-          value={fmt(totalDaily)}
-          icon={ShoppingCart}
-          color="blue"
-        />
-        <StatCard
-          emoji="🏦"
-          label="Total Savings"
-          value={fmt(totalSavings)}
-          icon={Wallet}
-          color={savingsColor}
-          sub={totalSavings >= 0 ? 'Positive balance' : 'Deficit'}
-        />
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <StatCard emoji="💰" label="Total Income" value={fmt(totalIncome)} icon={TrendingUp} color="green" />
+        <StatCard emoji="📄" label="Total Fixed Expenses" value={fmt(totalFixed)} icon={CreditCard} color="red" />
+        <StatCard emoji="🛒" label="Total Daily Expenses" value={fmt(totalDaily)} icon={ShoppingCart} color="blue" />
+        <StatCard emoji="📈" label="Total Investments" value={fmt(totalInvestments)} icon={PiggyBank} color="purple" />
+        <StatCard emoji="💵" label="Gross Savings" value={fmt(totalGrossSavings)} icon={Wallet} color="green" sub="Income − Expenses" />
+        <StatCard emoji="🏦" label="Cash Remaining" value={fmt(totalSavings)} icon={Wallet} color={cashColor} sub={`Gross ${fmt(totalGrossSavings)} · Invested ${fmt(totalInvestments)}`} />
       </div>
 
       {previousYearComparison && (
         <div className="bg-navy-950/50 border border-navy-700/30 rounded-xl px-4 py-3 flex flex-wrap gap-x-6 gap-y-1 text-xs">
           <ChangeIndicator change={previousYearComparison.incomeChange} label="Income" />
           <ChangeIndicator change={previousYearComparison.expenseChange} label="Expense" />
-          <ChangeIndicator change={previousYearComparison.savingsChange} label="Savings" />
+          <ChangeIndicator change={previousYearComparison.investmentChange} label="Investments" />
+          <ChangeIndicator change={previousYearComparison.savingsChange} label="Cash Remaining" />
         </div>
       )}
     </div>
   )
 }
 
-export function FinancialHealthSection({ savingsRate }: { savingsRate: number }) {
+export function FinancialHealthSection({ savingsRate, investmentRate }: { savingsRate: number; investmentRate: number }) {
   let status: string
   let statusColor: string
   let barColor: string
@@ -130,23 +107,29 @@ export function FinancialHealthSection({ savingsRate }: { savingsRate: number })
   const displayRate = Math.max(0, Math.min(savingsRate, 100))
 
   return (
-    <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-medium text-slate-300">Financial Health — Savings Rate</p>
-        <p className={`text-sm font-semibold ${statusColor}`}>
-          {status} · {savingsRate.toFixed(1)}%
-        </p>
+    <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5 space-y-4">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium text-slate-300">Financial Health — Gross Savings Rate</p>
+          <p className={`text-sm font-semibold ${statusColor}`}>
+            {status} · {savingsRate.toFixed(1)}%
+          </p>
+        </div>
+        <div className="w-full bg-navy-800 rounded-full h-3 overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+            style={{ width: `${displayRate}%` }}
+          />
+        </div>
+        <div className="flex justify-between mt-2 text-xs text-slate-500">
+          <span>Needs Attention (&lt;20%)</span>
+          <span>Good (20–40%)</span>
+          <span>Excellent (&gt;40%)</span>
+        </div>
       </div>
-      <div className="w-full bg-navy-800 rounded-full h-3 overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${barColor}`}
-          style={{ width: `${displayRate}%` }}
-        />
-      </div>
-      <div className="flex justify-between mt-2 text-xs text-slate-500">
-        <span>Needs Attention (&lt;20%)</span>
-        <span>Good (20–40%)</span>
-        <span>Excellent (&gt;40%)</span>
+      <div className="pt-3 border-t border-navy-700/30 flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-300">Investment Rate</p>
+        <p className="text-sm font-semibold text-purple-400">{investmentRate.toFixed(1)}% of income invested</p>
       </div>
     </div>
   )

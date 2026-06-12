@@ -62,6 +62,15 @@ export const PAGE_SEO: Record<string, PageSeo> = {
     path: '/daily',
     ogType: 'website',
   },
+  investments: {
+    title: 'Investment Tracker — Monthly SIP, Stocks & Mutual Fund Allocations',
+    description:
+      'Track monthly investments in mutual funds, stocks, FD, PPF, and more separately from expenses. See gross savings, invested amount, and cash remaining.',
+    keywords:
+      'investment tracker India, SIP tracker, mutual fund tracker, stock investment log, monthly investment planner, savings allocation app',
+    path: '/investments',
+    ogType: 'website',
+  },
   privacy: {
     title: 'Privacy Policy — How Finance Tracker Protects Your Data',
     description:
@@ -110,6 +119,7 @@ export function buildWebAppJsonLd() {
       'Income and salary tracking',
       'Fixed expense management',
       'Daily expense logging by category',
+      'Monthly investment tracking',
       'CSV, Excel, and JSON export',
       'Optional Google cloud sync',
     ],
@@ -154,6 +164,7 @@ export const PATH_TO_PAGE: Record<string, string> = {
   '/income': 'members',
   '/fixed': 'fixed',
   '/daily': 'daily',
+  '/investments': 'investments',
   '/privacy': 'privacy',
   '/about': 'about',
 }
@@ -164,6 +175,7 @@ export const PAGE_TO_PATH: Record<string, string> = {
   members: '/income',
   fixed: '/fixed',
   daily: '/daily',
+  investments: '/investments',
   privacy: '/privacy',
   about: '/about',
 }

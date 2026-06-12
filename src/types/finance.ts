@@ -29,10 +29,30 @@ export interface DailyExpense {
   importRef?: string
 }
 
+export type InvestmentType =
+  | 'Mutual Fund'
+  | 'Stocks'
+  | 'FD'
+  | 'PPF'
+  | 'NPS'
+  | 'Gold'
+  | 'Crypto'
+  | 'Other'
+
+export interface Investment {
+  id: string
+  name: string
+  amount: number
+  type: InvestmentType
+  platform?: string
+  note?: string
+}
+
 export interface MonthData {
   members: Member[]
   fixedExpenses: FixedExpense[]
   dailyExpenses: DailyExpense[]
+  investments: Investment[]
 }
 
 export type FinanceData = Record<MonthKey, MonthData>
@@ -45,8 +65,11 @@ export interface MonthlyBreakdown {
   fixedExpense: number
   dailyExpense: number
   totalExpense: number
+  investment: number
+  grossSavings: number
   savings: number
   savingsPercent: number
+  investmentPercent: number
 }
 
 export interface AnnualSummary {
@@ -54,8 +77,11 @@ export interface AnnualSummary {
   totalFixed: number
   totalDaily: number
   totalExpense: number
+  totalInvestments: number
+  totalGrossSavings: number
   totalSavings: number
   savingsRate: number
+  investmentRate: number
   expenseRatio: number
   monthlyBreakdown: MonthlyBreakdown[]
   categoryBreakdown: { name: string; value: number }[]

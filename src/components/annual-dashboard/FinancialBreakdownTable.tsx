@@ -6,7 +6,7 @@ interface FinancialBreakdownTableProps {
 }
 
 export default function FinancialBreakdownTable({ monthlyBreakdown }: FinancialBreakdownTableProps) {
-  const hasData = monthlyBreakdown.some(m => m.income > 0 || m.totalExpense > 0)
+  const hasData = monthlyBreakdown.some(m => m.income > 0 || m.totalExpense > 0 || m.investment > 0)
 
   return (
     <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
@@ -20,9 +20,10 @@ export default function FinancialBreakdownTable({ monthlyBreakdown }: FinancialB
                 <th className="px-4 py-3 text-right">Income</th>
                 <th className="px-4 py-3 text-right">Fixed Expense</th>
                 <th className="px-4 py-3 text-right">Daily Expense</th>
+                <th className="px-4 py-3 text-right">Investments</th>
                 <th className="px-4 py-3 text-right">Total Expense</th>
-                <th className="px-4 py-3 text-right">Savings</th>
-                <th className="px-4 py-3 text-right">Savings %</th>
+                <th className="px-4 py-3 text-right">Cash Remaining</th>
+                <th className="px-4 py-3 text-right">Cash %</th>
               </tr>
             </thead>
             <tbody>
@@ -35,6 +36,7 @@ export default function FinancialBreakdownTable({ monthlyBreakdown }: FinancialB
                   <td className="px-4 py-2.5 text-right text-emerald-400">{fmt(row.income)}</td>
                   <td className="px-4 py-2.5 text-right text-red-400">{fmt(row.fixedExpense)}</td>
                   <td className="px-4 py-2.5 text-right text-blue-400">{fmt(row.dailyExpense)}</td>
+                  <td className="px-4 py-2.5 text-right text-purple-400">{fmt(row.investment)}</td>
                   <td className="px-4 py-2.5 text-right text-slate-300">{fmt(row.totalExpense)}</td>
                   <td className={`px-4 py-2.5 text-right font-medium ${row.savings >= 0 ? 'text-gold-400' : 'text-red-400'}`}>
                     {fmt(row.savings)}

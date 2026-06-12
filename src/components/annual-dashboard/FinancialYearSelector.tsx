@@ -33,7 +33,6 @@ export default function FinancialYearSelector({
       </button>
 
       <div className="flex flex-col gap-1.5 min-w-[180px]">
-        <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Financial Year</label>
         <select
           value={fyStartYear}
           onChange={e => onChange(parseInt(e.target.value, 10))}

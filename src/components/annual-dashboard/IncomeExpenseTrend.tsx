@@ -20,10 +20,13 @@ export default function IncomeExpenseTrend({ monthlyBreakdown }: IncomeExpenseTr
     month: m.monthShort,
     Income: m.income,
     'Total Expense': m.totalExpense,
-    Savings: m.savings,
+    Investments: m.investment,
+    'Cash Remaining': m.savings,
   }))
 
-  const hasData = chartData.some(d => d.Income > 0 || d['Total Expense'] > 0)
+  const hasData = chartData.some(d =>
+    d.Income > 0 || d['Total Expense'] > 0 || d.Investments > 0,
+  )
 
   return (
     <div className="bg-navy-950/50 border border-navy-700/30 rounded-2xl p-5">
@@ -43,7 +46,8 @@ export default function IncomeExpenseTrend({ monthlyBreakdown }: IncomeExpenseTr
             <Legend formatter={v => <span className="text-slate-300 text-xs">{v}</span>} />
             <Line type="monotone" dataKey="Income" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
             <Line type="monotone" dataKey="Total Expense" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="Savings" stroke="#fbbf24" strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Investments" stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Cash Remaining" stroke="#fbbf24" strokeWidth={2} dot={{ r: 3 }} />
           </LineChart>
         </ResponsiveContainer>
       ) : (
