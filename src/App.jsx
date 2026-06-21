@@ -2724,6 +2724,17 @@ export default function App() {
                 <tab.icon className="w-4.5 h-4.5" /> {tab.label}
               </button>
             ))}
+
+            {!isAnnualPage && (
+              <>
+                <div className="my-3 border-t border-navy-700/30" />
+                <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Actions</p>
+                <button onClick={() => { requestCarryOver(); setSidebarOpen(false) }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
+                  <Copy className="w-4.5 h-4.5" /> Carry Over Fixed Expenses
+                </button>
+              </>
+            )}
           </nav>
 
           {/* Info section */}
