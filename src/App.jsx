@@ -162,7 +162,7 @@ function ConfirmDialog({ open, title, message, onConfirm, onCancel, confirmLabel
   }
   const s = styles[variant] || styles.danger
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onCancel}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={onCancel}>
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-slide-in" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-4">
           <div className={`w-10 h-10 rounded-full ${s.iconBg} flex items-center justify-center`}>
@@ -2729,7 +2729,7 @@ export default function App() {
               <>
                 <div className="my-3 border-t border-navy-700/30" />
                 <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Actions</p>
-                <button onClick={() => { requestCarryOver(); setSidebarOpen(false) }}
+                <button onClick={() => { setSidebarOpen(false); requestCarryOver() }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-navy-800 hover:text-white transition-colors mb-0.5">
                   <Copy className="w-4.5 h-4.5" /> Carry Over Fixed Expenses
                 </button>
