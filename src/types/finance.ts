@@ -67,6 +67,7 @@ export interface MonthlyBreakdown {
   totalExpense: number
   investment: number
   grossSavings: number
+  grossSavingsPercent: number
   savings: number
   savingsPercent: number
   investmentPercent: number

@@ -27,6 +27,7 @@ export function aggregateFinancialYear(data: FinanceData, fyStartYear: number): 
       totalExpense: metrics.totalExpense,
       investment: metrics.totalInvestments,
       grossSavings: metrics.grossSavings,
+      grossSavingsPercent: metrics.grossSavingsRate,
       savings: metrics.cashRemaining,
       savingsPercent: metrics.income > 0 ? (metrics.cashRemaining / metrics.income) * 100 : 0,
       investmentPercent: metrics.investmentRatio,
