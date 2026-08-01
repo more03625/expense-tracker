@@ -22,9 +22,8 @@ export default function FinancialBreakdownTable({ monthlyBreakdown }: FinancialB
                 <th className="px-4 py-3 text-right">Daily Expense</th>
                 <th className="px-4 py-3 text-right">Total Expense</th>
                 <th className="px-4 py-3 text-right">Investments</th>
-                <th className="px-4 py-3 text-right">Cash Remaining</th>
                 <th className="px-4 py-3 text-right">Gross Saving</th>
-                <th className="px-4 py-3 text-right">Cash %</th>
+                <th className="px-4 py-3 text-right">Cash Remaining</th>
               </tr>
             </thead>
             <tbody>
@@ -35,19 +34,29 @@ export default function FinancialBreakdownTable({ monthlyBreakdown }: FinancialB
                 >
                   <td className="px-4 py-2.5 text-slate-300 font-medium">{row.monthShort}</td>
                   <td className="px-4 py-2.5 text-right text-emerald-400">{fmt(row.income)}</td>
-                  <td className="px-4 py-2.5 text-right text-red-400">{fmt(row.fixedExpense)}</td>
-                  <td className="px-4 py-2.5 text-right text-blue-400">{fmt(row.dailyExpense)}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-300">{fmt(row.totalExpense)}</td>
-                  <td className="px-4 py-2.5 text-right text-purple-400">{fmt(row.investment)}</td>
-                  <td className={`px-4 py-2.5 text-right font-medium ${row.savings >= 0 ? 'text-gold-400' : 'text-red-400'}`}>
-                    {fmt(row.savings)}
+                  <td className="px-4 py-2.5 text-right text-red-400">
+                    <div>{fmt(row.fixedExpense)}</div>
+                    <div className="text-xs opacity-70">{fmtPercent(row.fixedExpensePercent)}</div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-blue-400">
+                    <div>{fmt(row.dailyExpense)}</div>
+                    <div className="text-xs opacity-70">{fmtPercent(row.dailyExpensePercent)}</div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-slate-300">
+                    <div>{fmt(row.totalExpense)}</div>
+                    <div className="text-xs opacity-70">{fmtPercent(row.totalExpensePercent)}</div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-purple-400">
+                    <div>{fmt(row.investment)}</div>
+                    <div className="text-xs opacity-70">{fmtPercent(row.investmentPercent)}</div>
                   </td>
                   <td className={`px-4 py-2.5 text-right ${row.grossSavings >= 0 ? 'text-gold-400' : 'text-red-400'}`}>
                     <div>{fmt(row.grossSavings)}</div>
                     <div className="text-xs opacity-70">{fmtPercent(row.grossSavingsPercent)}</div>
                   </td>
-                  <td className={`px-4 py-2.5 text-right ${row.savingsPercent >= 0 ? 'text-gold-400' : 'text-red-400'}`}>
-                    {fmtPercent(row.savingsPercent)}
+                  <td className={`px-4 py-2.5 text-right font-medium ${row.savings >= 0 ? 'text-gold-400' : 'text-red-400'}`}>
+                    {fmt(row.savings)}
+                    <div className="text-xs opacity-70">{fmtPercent(row.savingsPercent)}</div>
                   </td>
                 </tr>
               ))}

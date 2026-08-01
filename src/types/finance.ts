@@ -63,8 +63,11 @@ export interface MonthlyBreakdown {
   monthShort: string
   income: number
   fixedExpense: number
+  fixedExpensePercent: number
   dailyExpense: number
+  dailyExpensePercent: number
   totalExpense: number
+  totalExpensePercent: number
   investment: number
   grossSavings: number
   grossSavingsPercent: number
